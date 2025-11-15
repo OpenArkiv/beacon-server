@@ -73,7 +73,7 @@ console.log('Proposal key:', proposalKey);
 
 3) Open Proposal
 
-Create the decision “room”: a proposal entity with a bounded time window (Expires In). This is where votes will attach-still using the very same client/account you verified.
+Create the decision “room”:  a proposal entity with a bounded time window (Expires In). This is where votes will attach-still using the very same client/account you verified.
 
 Goal: Write a proposal entity with an expiration window (Expires In).
 Why it matters: Gives your vote stream a clear scope and predictable cost.
