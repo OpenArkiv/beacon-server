@@ -94,7 +94,7 @@ export default function HomePage() {
 
         // Add location pins
         const pinColor =   "#45CC2D"
-        const pinShadowColor = "##45CC2D"
+        const pinShadowColor = "#45CC2D"
         
         LOCATION_PINS.forEach(([lng, lat, label]) => {
           const [x, y] = latLngToSVG(lng, lat)
@@ -252,14 +252,27 @@ export default function HomePage() {
     <div
       className="min-h-screen w-full py-24 px-8 overflow-hidden flex items-center justify-center" 
     >
-      <div className="flex justify-center items-center w-full h-full p-8">
+      <div className="relative flex justify-center items-center w-full h-full p-8">
         {svgContent ? (
-          <div
-            id="map-svg"
-            className="w-full h-full max-w-full max-h-screen flex items-center justify-center"
-            style={{ aspectRatio: "1138/640" }}
-            dangerouslySetInnerHTML={{ __html: svgContent }}
-          />
+          <>
+            <div
+              id="map-svg"
+              className="w-full h-full max-w-full max-h-screen flex items-center justify-center"
+              style={{ aspectRatio: "1138/640" }}
+              dangerouslySetInnerHTML={{ __html: svgContent }}
+            />
+            <div
+              className="absolute bottom-4 right-4 pointer-events-none select-none"
+              style={{
+                color: isDark ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.12)",
+                fontSize: "24px",
+                fontWeight: 300,
+                fontFamily: "system-ui, -apple-system, sans-serif",
+              }}
+            >
+              OpenArkiv
+            </div>
+          </>
         ) : (
           <div
             className="bg-gray-200 animate-pulse rounded-lg"
