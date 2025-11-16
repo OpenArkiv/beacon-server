@@ -15,3 +15,6 @@ eg. payload for the arkiv entity {
 }
 
 Indexes: devicePub (unique), lastSeen.
+
+
+@device.ts in the server rn the signature is mandatory for the endpoints, but when whistleblow flag is set, it should be anonymous, so signature shouldnt be mandatory - you wont need it anyway. make changes accordingly
