@@ -9,10 +9,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"reflect"
 	"sync"
 	"time"
-	"unsafe"
 
 	"gitlab.com/elixxir/client/v4/cmix"
 	"gitlab.com/elixxir/client/v4/cmix/rounds"
@@ -154,13 +152,6 @@ https://git.xx.network/xx_network/xxdk-examples`,
 			panic(fmt.Sprintf("%+v", err))
 		}
 
-		// Wait for gateway pool to be ready before starting network follower
-		// The developer suggested calling IsReady on the main thread
-		// We add a delay to give the gateway pool time to initialize
-		fmt.Printf("Waiting for gateway pool to initialize...\n")
-		time.Sleep(2 * time.Second)
-		waitForGatewayReady(net.GetCmix())
-
 		err = net.StartNetworkFollower(5 * time.Second)
 		if err != nil {
 			panic(fmt.Sprintf("%+v", err))
@@ -172,7 +163,7 @@ https://git.xx.network/xx_network/xxdk-examples`,
 				connected <- isConnected
 			})
 		waitUntilConnected(connected)
-		waitForRegistration(net, 0.85)
+		waitForRegistration(net, 0.95)
 
 		// Message Sending
 		go func() {
@@ -314,75 +305,6 @@ func getDMPartner() (ed25519.PublicKey, uint32, bool) {
 	}
 	token := uint32(viper.GetUint32(partnerTokenFlag))
 	return ecdh.EcdhNike2EdwardsPublicKey(pubKey), token, true
-}
-
-// waitForGatewayReady waits for the gateway pool to be ready before proceeding.
-// This must be called on the main thread as suggested by the developer.
-// We use reflection with unsafe to access the unexported gateway pool and call IsReady.
-func waitForGatewayReady(client cmix.Client) {
-	maxWait := 10 * time.Second
-	checkInterval := 200 * time.Millisecond
-	startTime := time.Now()
-
-	for time.Since(startTime) < maxWait {
-		// Get the underlying concrete value from the interface
-		clientValue := reflect.ValueOf(client)
-		if clientValue.Kind() != reflect.Interface {
-			time.Sleep(checkInterval)
-			continue
-		}
-		
-		// Get the concrete value (the actual client struct)
-		concreteValue := clientValue.Elem()
-		if !concreteValue.IsValid() || concreteValue.Kind() != reflect.Ptr {
-			time.Sleep(checkInterval)
-			continue
-		}
-		
-		// Dereference the pointer to get the struct
-		structValue := concreteValue.Elem()
-		if !structValue.IsValid() {
-			time.Sleep(checkInterval)
-			continue
-		}
-		
-		// Search for the gateway pool field in the struct
-		structType := structValue.Type()
-		for i := 0; i < structType.NumField(); i++ {
-			field := structType.Field(i)
-			fieldTypeStr := field.Type.String()
-			
-			// Look for gateway pool type (could be *gateway.pool or similar)
-			if fieldTypeStr == "*gateway.pool" || fieldTypeStr == "gateway.pool" {
-				// Found the gateway pool field, access it using unsafe
-				fieldAddr := unsafe.Pointer(structValue.UnsafeAddr() + field.Offset)
-				poolValue := reflect.NewAt(field.Type, fieldAddr).Elem()
-				
-				// Try to call IsReady method
-				if poolValue.Kind() == reflect.Ptr && !poolValue.IsNil() {
-					poolElem := poolValue.Elem()
-					isReadyMethod := poolElem.MethodByName("IsReady")
-					if !isReadyMethod.IsValid() {
-						// Try on the pointer itself
-						isReadyMethod = poolValue.MethodByName("IsReady")
-					}
-					if isReadyMethod.IsValid() {
-						results := isReadyMethod.Call(nil)
-						if len(results) > 0 && results[0].Bool() {
-							fmt.Printf("Gateway pool is ready\n")
-							return
-						}
-					}
-				}
-			}
-		}
-		
-		// Wait a bit before checking again
-		time.Sleep(checkInterval)
-	}
-	
-	// If we couldn't verify readiness, proceed anyway (the delay should help)
-	fmt.Printf("Proceeding after waiting for gateway pool initialization\n")
 }
 
 // waitUntilConnected waits until the network connects and also

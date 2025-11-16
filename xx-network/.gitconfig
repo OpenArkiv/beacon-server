@@ -1,0 +1,8 @@
+
+
+[url "git@gitlab.com:"]
+        insteadOf = https://gitlab.com/
+[url "git@git.xx.network:xx_network/"]
+        insteadOf = https://gitlab.com/xx_network/
+[url "git@git.xx.network:elixxir/"]
+        insteadOf = https://gitlab.com/elixxir/
