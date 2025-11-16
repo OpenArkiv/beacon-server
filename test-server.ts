@@ -333,10 +333,82 @@ async function testInvalidSignature() {
 }
 
 /**
- * Test upload with whistleblow flag
+ * Test upload with whistleblow flag (anonymous - no signature)
+ */
+async function testWhistleblowUploadAnonymous(deviceName: string) {
+  console.log(`\n🔒 Testing /api/device/upload endpoint (whistleblow - anonymous) for ${deviceName}...`);
+  
+  // Create entity without device address (anonymous)
+  const entity = createTestEntity('anonymous', deviceName);
+  
+  try {
+    const formData = new FormData();
+    formData.append('entity', JSON.stringify(entity));
+    // No signature - anonymous whistleblow
+    formData.append('whistleblow', 'true');
+    
+    const response = await axios.post(`${SERVER_URL}/api/device/upload`, formData, {
+      headers: formData.getHeaders(),
+      timeout: 150000, // 150 seconds for xx-network (Go program runs indefinitely, needs time for network registration)
+    });
+    
+    console.log('✅ Anonymous whistleblow upload test passed');
+    console.log(`   Message: ${response.data.message || 'Sent to xx-network'}`);
+    console.log(`   Node ID: ${response.data.data?.nodeId || entity.nodeId}`);
+    console.log(`   Whistleblow: ${response.data.data?.whistleblow || true}`);
+    console.log(`   Device Pub: ${response.data.data?.xxNetwork ? 'Anonymous' : entity.devicePub}`);
+    
+    // Log xx-network response data
+    const xxNetwork = response.data.data?.xxNetwork;
+    if (xxNetwork) {
+      console.log('\n   📡 xx-Network Response Data:');
+      if (xxNetwork.dmPubKey) {
+        console.log(`      DM Pub Key: ${xxNetwork.dmPubKey}`);
+      }
+      if (xxNetwork.messageIds && xxNetwork.messageIds.length > 0) {
+        console.log(`      Message IDs (${xxNetwork.messageIds.length}): ${xxNetwork.messageIds.slice(0, 3).join(', ')}${xxNetwork.messageIds.length > 3 ? '...' : ''}`);
+      }
+    } else {
+      console.log('   ⚠️  No xx-network data in response');
+    }
+    
+    return true;
+  } catch (error: any) {
+    if (error.code === 'ECONNREFUSED') {
+      console.error('❌ Anonymous whistleblow upload test failed: Server is not running!');
+    } else {
+      const responseData = error.response?.data;
+      const status = error.response?.status;
+      
+      // Handle timeout - if we got a response before timeout, it's a success
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        if (error.response?.data) {
+          const responseData = error.response.data;
+          console.log('⚠️  Request timed out but got response data');
+          const xxNetwork = responseData.data?.xxNetwork;
+          if (xxNetwork && (xxNetwork.dmPubKey || xxNetwork.messageIds?.length)) {
+            return true;
+          }
+        }
+        console.error('❌ Anonymous whistleblow upload test failed: Request timed out');
+        return false;
+      }
+      
+      console.error('❌ Anonymous whistleblow upload test failed:', responseData || error.message);
+      if (error.response) {
+        console.error(`   Status: ${error.response.status}`);
+        console.error(`   Data:`, JSON.stringify(responseData, null, 2));
+      }
+    }
+    return false;
+  }
+}
+
+/**
+ * Test upload with whistleblow flag (with signature - for backward compatibility)
  */
 async function testWhistleblowUpload(privateKey: string, deviceName: string) {
-  console.log(`\n🔒 Testing /api/device/upload endpoint (whistleblow) for ${deviceName}...`);
+  console.log(`\n🔒 Testing /api/device/upload endpoint (whistleblow with signature) for ${deviceName}...`);
   
   const wallet = new ethers.Wallet(privateKey);
   const deviceAddress = wallet.address;
@@ -566,6 +638,13 @@ async function runTests() {
   
   // Test verify endpoint
   results.verify = await testVerifyEndpoint(testDevice.privateKey);
+
+
+  // Test anonymous whistleblow upload (no signature - sends to xx-network)
+  results['whistleblow-upload-anonymous'] = await testWhistleblowUploadAnonymous(testDevice.name);
+  
+  // Small delay between whistleblow tests
+  await new Promise(resolve => setTimeout(resolve, 1000));
   
   // Test upload without file
   results['upload-no-file'] = await testUploadWithoutFile(testDevice.privateKey, testDevice.name);
@@ -579,7 +658,8 @@ async function runTests() {
   // Test invalid signature
   results['invalid-signature'] = await testInvalidSignature();
   
-  // Test whistleblow upload (sends to xx-network)
+  
+  // Test whistleblow upload with signature (for backward compatibility)
   results['whistleblow-upload'] = await testWhistleblowUpload(testDevice.privateKey, testDevice.name);
   
   // Small delay before checking stored chats

@@ -21,22 +21,26 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
     
     // Parse JSON fields from multipart form data
     let entity: DeviceEntity;
-    let signature: { message: string; signature: string };
+    let signature: { message: string; signature: string } | undefined;
     let whistleblow: boolean = false;
     
     try {
       entity = typeof req.body.entity === 'string' 
         ? JSON.parse(req.body.entity) 
         : req.body.entity;
-      signature = typeof req.body.signature === 'string'
-        ? JSON.parse(req.body.signature)
-        : req.body.signature;
       
-      // Parse whistleblow field
+      // Parse whistleblow field first (before signature validation)
       if (req.body.whistleblow !== undefined) {
         whistleblow = typeof req.body.whistleblow === 'string'
           ? req.body.whistleblow === 'true'
           : Boolean(req.body.whistleblow);
+      }
+      
+      // Parse signature (optional when whistleblow is true)
+      if (req.body.signature !== undefined) {
+        signature = typeof req.body.signature === 'string'
+          ? JSON.parse(req.body.signature)
+          : req.body.signature;
       }
     } catch (parseError) {
       return res.status(400).json({ 
@@ -45,50 +49,63 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
     }
     
     // Validate required fields
-    if (!entity || !signature) {
+    if (!entity) {
       return res.status(400).json({ 
-        error: 'Missing required fields: entity and signature are required' 
+        error: 'Missing required field: entity is required' 
       });
     }
     
-    if (!signature.message || !signature.signature) {
-      return res.status(400).json({ 
-        error: 'Signature must include message and signature fields' 
-      });
+    // Signature is only required for Arkiv uploads (when whistleblow is false)
+    if (!whistleblow) {
+      if (!signature) {
+        return res.status(400).json({ 
+          error: 'Missing required field: signature is required for Arkiv uploads' 
+        });
+      }
+      
+      if (!signature.message || !signature.signature) {
+        return res.status(400).json({ 
+          error: 'Signature must include message and signature fields' 
+        });
+      }
     }
     
-    // Verify signature and get device address
-    let deviceAddress: string;
-    try {
-      deviceAddress = verifySignatureAndGetAddress(signature.message, signature.signature);
-    } catch (error) {
-      return res.status(401).json({ 
-        error: `Signature verification failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
-      });
-    }
+    // Verify signature and get device address (only for Arkiv uploads)
+    let deviceAddress: string | undefined;
+    let serverPrivateKey: string | undefined;
     
-    // Generate server-side wallet from device address
-    const serverSalt = process.env.SERVER_SALT;
-    if (!serverSalt) {
-      return res.status(500).json({ 
-        error: 'Server configuration error: SERVER_SALT not set' 
-      });
-    }
-    
-    let serverPrivateKey: string;
-    try {
-      serverPrivateKey = generateServerWalletFromAddress(deviceAddress, serverSalt);
-    } catch (error) {
-      return res.status(500).json({ 
-        error: `Failed to generate server wallet: ${error instanceof Error ? error.message : 'Unknown error'}` 
-      });
+    if (!whistleblow && signature) {
+      try {
+        deviceAddress = verifySignatureAndGetAddress(signature.message, signature.signature);
+      } catch (error) {
+        return res.status(401).json({ 
+          error: `Signature verification failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        });
+      }
+      
+      // Generate server-side wallet from device address
+      const serverSalt = process.env.SERVER_SALT;
+      if (!serverSalt) {
+        return res.status(500).json({ 
+          error: 'Server configuration error: SERVER_SALT not set' 
+        });
+      }
+      
+      try {
+        serverPrivateKey = generateServerWalletFromAddress(deviceAddress, serverSalt);
+      } catch (error) {
+        return res.status(500).json({ 
+          error: `Failed to generate server wallet: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        });
+      }
     }
     
     // Validate and prepare entity
+    // For whistleblow, use entity.devicePub if provided, otherwise use anonymous placeholder
     const deviceEntity: DeviceEntity = {
       _id: entity._id || `node_${uuidv4()}`,
       nodeId: entity.nodeId || entity._id || `node_${uuidv4()}`,
-      devicePub: entity.devicePub || deviceAddress,
+      devicePub: entity.devicePub || deviceAddress || `anonymous_${uuidv4()}`,
       location: entity.location,
       lastSeen: entity.lastSeen || new Date().toISOString(),
       storage: entity.storage,
@@ -152,6 +169,13 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
           error: `IPFS upload failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
         });
       }
+    }
+    
+    // For Arkiv uploads, we need serverPrivateKey (which requires signature)
+    if (!serverPrivateKey) {
+      return res.status(400).json({ 
+        error: 'Server private key is required for Arkiv uploads. Signature must be provided when whistleblow is false.' 
+      });
     }
     
     // Get wallet address for error reporting
