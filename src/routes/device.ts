@@ -77,6 +77,7 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
     if (!whistleblow && signature) {
       try {
         deviceAddress = verifySignatureAndGetAddress(signature.message, signature.signature);
+        console.log('deviceAddress', deviceAddress);
       } catch (error) {
         return res.status(401).json({ 
           error: `Signature verification failed: ${error instanceof Error ? error.message : 'Unknown error'}` 

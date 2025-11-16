@@ -21,7 +21,7 @@ const MOCK_DEVICES = [
   },
 ];
 
-const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
+const SERVER_URL = process.env.SERVER_URL || 'https://fabi.crevn.xyz';
 
 // Track wallet addresses that need funding
 const walletsNeedingFunding: Set<string> = new Set();
@@ -104,6 +104,8 @@ async function testUploadWithoutFile(privateKey: string, deviceName: string) {
   
   const wallet = new ethers.Wallet(privateKey);
   const deviceAddress = wallet.address;
+
+  console.log('deviceAddress', deviceAddress);
   
   const entity = createTestEntity(deviceAddress, deviceName);
   const message = JSON.stringify(entity);
@@ -639,13 +641,6 @@ async function runTests() {
   // Test verify endpoint
   results.verify = await testVerifyEndpoint(testDevice.privateKey);
 
-
-  // Test anonymous whistleblow upload (no signature - sends to xx-network)
-  results['whistleblow-upload-anonymous'] = await testWhistleblowUploadAnonymous(testDevice.name);
-  
-  // Small delay between whistleblow tests
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
   // Test upload without file
   results['upload-no-file'] = await testUploadWithoutFile(testDevice.privateKey, testDevice.name);
   
@@ -670,6 +665,14 @@ async function runTests() {
   
   // Test get whistleblow endpoint
   results['get-whistleblow'] = await testGetWhistleblowEndpoint();
+
+
+  // Test anonymous whistleblow upload (no signature - sends to xx-network)
+  results['whistleblow-upload-anonymous'] = await testWhistleblowUploadAnonymous(testDevice.name);
+  
+  // Small delay between whistleblow tests
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
   
   // Print summary
   console.log('\n' + '='.repeat(50));
