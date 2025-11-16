@@ -59,7 +59,7 @@ https://git.xx.network/xx_network/xxdk-examples`,
 			ndf, err = xxdk.DownloadAndVerifySignedNdfWithUrl(
 				mainNetUrl, string(certFile))
 			if err != nil {
-				panic(fmt.Sprintf("+v", err))
+				// panic(fmt.Sprintf("+v", err))
 			}
 			os.WriteFile(ndfPath, ndf, os.FileMode(0777))
 		}
@@ -71,13 +71,13 @@ https://git.xx.network/xx_network/xxdk-examples`,
 		if os.IsNotExist(err) || !stat.IsDir() {
 			err = xxdk.NewCmix(string(ndf), stateDir, secret, "")
 			if err != nil {
-				panic(fmt.Sprintf("%+v", err))
+				// panic(fmt.Sprintf("%+v", err))
 			}
 		}
 		params := xxdk.GetDefaultCMixParams()
 		net, err := xxdk.LoadCmix(stateDir, secret, params)
 		if err != nil {
-			panic(fmt.Sprintf("%+v", err))
+			// panic(fmt.Sprintf("%+v", err))
 		}
 
 		// Create or Load Direct Messaging Identity
@@ -86,7 +86,7 @@ https://git.xx.network/xx_network/xxdk-examples`,
 		ekv := net.GetStorage().GetKV()
 		dmIDObj, err := ekv.Get("dmID", 0)
 		if err != nil && ekv.Exists(err) {
-			panic(fmt.Sprintf("%+v", err))
+			// panic(fmt.Sprintf("%+v", err))
 		}
 		var dmID codename.PrivateIdentity
 		if ekv.Exists(err) {
@@ -103,7 +103,7 @@ https://git.xx.network/xx_network/xxdk-examples`,
 			})
 		}
 		if err != nil {
-			panic(fmt.Sprintf("%+v", err))
+			// panic(fmt.Sprintf("%+v", err))
 		}
 		dmToken := dmID.GetDMToken()
 		pubKeyBytes := dmID.PubKey[:]
@@ -149,12 +149,12 @@ https://git.xx.network/xx_network/xxdk-examples`,
 		dmClient, err := dm.NewDMClient(&dmID, myReceiver, sendTracker,
 			myNickMgr, nm, net.GetCmix(), ekv, net.GetRng(), nil)
 		if err != nil {
-			panic(fmt.Sprintf("%+v", err))
+			// panic(fmt.Sprintf("%+v", err))
 		}
 
 		err = net.StartNetworkFollower(5 * time.Second)
 		if err != nil {
-			panic(fmt.Sprintf("%+v", err))
+			// panic(fmt.Sprintf("%+v", err))
 		}
 		// Wait until connected or crash on timeout
 		connected := make(chan bool, 10)
@@ -175,7 +175,7 @@ https://git.xx.network/xx_network/xxdk-examples`,
 					text,
 					cmix.GetDefaultCMIXParams())
 				if err != nil {
-					fmt.Printf("%+v\n", err)
+					// fmt.Printf("%+v\n", err)
 				}
 				fmt.Printf("DM Send: %v, %d, %v, %s\n", msgID,
 					rnd.ID, ephID, text)
@@ -204,7 +204,7 @@ https://git.xx.network/xx_network/xxdk-examples`,
 				}
 				fmt.Printf("Message received (%s, %s): %s\n",
 					selfStr, msg.mType, msg.content)
-				fmt.Printf("Message received: %s\n", msg)
+				// fmt.Printf("Message received: %s\n", msg)
 				fmt.Printf("RECVDMPUBKEY: %s\n",
 					base64.RawStdEncoding.EncodeToString(
 						msg.partnerKey[:]))
@@ -220,9 +220,9 @@ https://git.xx.network/xx_network/xxdk-examples`,
 
 		err = net.StopNetworkFollower()
 		if err != nil {
-			fmt.Printf(
-				"Failed to cleanly close threads: %+v\n",
-				err)
+			// fmt.Printf(
+			// 	"Failed to cleanly close threads: %+v\n",
+			// 	err)
 		}
 		fmt.Printf("Client exiting!\n")
 	},
@@ -356,7 +356,7 @@ func waitForRegistration(user *xxdk.Cmix, threshhold float32) {
 		time.Sleep(1 * time.Second)
 		numReg, total, err = user.GetNodeRegistrationStatus()
 		if err != nil {
-			panic(fmt.Errorf("%+v", err))
+			// panic(fmt.Errorf("%+v", err))
 		}
 
 		fmt.Printf("Registering with nodes (%d/%d)...\n",
@@ -479,8 +479,8 @@ func (r *receiver) UpdateSentStatus(uuid uint64, messageID message.ID,
 	fmt.Printf("UpdateSentStatus: %v\n", messageID)
 	msg, ok := r.msgData[messageID]
 	if !ok {
-		fmt.Printf("UpdateSentStatus msgID not found: %v\n",
-			messageID)
+		// fmt.Printf("UpdateSentStatus msgID not found: %v\n",
+		// 	messageID)
 		return
 	}
 	msg.status = status

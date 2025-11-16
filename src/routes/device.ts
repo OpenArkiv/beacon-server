@@ -2,6 +2,9 @@ import express, { Request, Response } from 'express';
 import { verifySignatureAndGetAddress, generateServerWalletFromAddress } from '../utils/signature.js';
 import { createArkivWalletClient, uploadEntityToArkiv, getWalletAddressFromPrivateKey } from '../utils/arkiv.js';
 import { uploadToPinata, cleanupTempFile } from '../utils/ipfs.js';
+import { sendToXXNetwork } from '../utils/xxnetwork.js';
+import { chatStorage } from '../utils/storage.js';
+import { upload } from '../middleware/upload.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { DeviceEntity, FileUploadRequest, UploadResponse } from '../types/index.js';
 
@@ -12,13 +15,14 @@ const router = express.Router();
  * Upload device entity data to Arkiv network
  * Supports optional file upload to IPFS
  */
-router.post('/upload', async (req: Request, res: Response) => {
+router.post('/upload', upload.single('file') as any, async (req: Request, res: Response) => {
   try {
     const file = (req as any).file;
     
     // Parse JSON fields from multipart form data
     let entity: DeviceEntity;
     let signature: { message: string; signature: string };
+    let whistleblow: boolean = false;
     
     try {
       entity = typeof req.body.entity === 'string' 
@@ -27,6 +31,13 @@ router.post('/upload', async (req: Request, res: Response) => {
       signature = typeof req.body.signature === 'string'
         ? JSON.parse(req.body.signature)
         : req.body.signature;
+      
+      // Parse whistleblow field
+      if (req.body.whistleblow !== undefined) {
+        whistleblow = typeof req.body.whistleblow === 'string'
+          ? req.body.whistleblow === 'true'
+          : Boolean(req.body.whistleblow);
+      }
     } catch (parseError) {
       return res.status(400).json({ 
         error: 'Invalid JSON in entity or signature fields' 
@@ -83,6 +94,31 @@ router.post('/upload', async (req: Request, res: Response) => {
       storage: entity.storage,
       tags: entity.tags || [],
     };
+    
+    // Store chat in memory
+    chatStorage.storeChat(deviceEntity, whistleblow);
+    
+    // If whistleblow is true, send to xx-network instead of Arkiv
+    if (whistleblow) {
+      try {
+        await sendToXXNetwork(deviceEntity);
+        
+        res.status(200).json({
+          success: true,
+          message: 'Message sent to xx-network',
+          data: {
+            nodeId: deviceEntity.nodeId,
+            whistleblow: true,
+          },
+        });
+        return;
+      } catch (error) {
+        console.error('xx-network send error:', error);
+        return res.status(500).json({ 
+          error: `Failed to send to xx-network: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        });
+      }
+    }
     
     // Upload file to IPFS if provided
     let ipfsHash: string | undefined;
@@ -184,6 +220,48 @@ router.post('/verify', async (req: Request, res: Response) => {
     }
   } catch (error) {
     console.error('Verify error:', error);
+    res.status(500).json({ 
+      error: `Internal server error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    });
+  }
+});
+
+/**
+ * GET /api/device/chats
+ * Get all stored chats
+ */
+router.get('/chats', async (req: Request, res: Response) => {
+  try {
+    const chats = chatStorage.getAllChats();
+    
+    res.status(200).json({
+      success: true,
+      count: chats.length,
+      data: chats,
+    });
+  } catch (error) {
+    console.error('Get chats error:', error);
+    res.status(500).json({ 
+      error: `Internal server error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    });
+  }
+});
+
+/**
+ * GET /api/device/whistleblow
+ * Get all whistleblow messages
+ */
+router.get('/whistleblow', async (req: Request, res: Response) => {
+  try {
+    const messages = chatStorage.getWhistleblowMessages();
+    
+    res.status(200).json({
+      success: true,
+      count: messages.length,
+      data: messages,
+    });
+  } catch (error) {
+    console.error('Get whistleblow messages error:', error);
     res.status(500).json({ 
       error: `Internal server error: ${error instanceof Error ? error.message : 'Unknown error'}` 
     });

@@ -90,6 +90,6 @@ require (
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	// nhooyr.io/websocket v1.8.7 // indirect
+	nhooyr.io/websocket v1.8.7 // indirect
 	src.agwa.name/tlshacks v0.0.0-20220518131152-d2c6f4e2b780 // indirect
 )

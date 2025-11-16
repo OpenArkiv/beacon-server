@@ -37,7 +37,7 @@ app.get('/health', (req, res) => {
 });
 
 // API routes
-app.use('/api/device', upload.single('file'), deviceRoutes);
+app.use('/api/device', deviceRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
