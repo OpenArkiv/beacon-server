@@ -5,12 +5,79 @@ import type { DeviceEntity } from '../types/index.js';
 
 const execAsync = promisify(exec);
 
+export interface XXNetworkResponse {
+  dmPubKey?: string;
+  dmToken?: string;
+  dmRecvPubKey?: string;
+  dmRecvToken?: string;
+  userReceptionID?: string;
+  networkStatus?: boolean;
+  messageIds?: string[];
+  roundIds?: number[];
+  receivedMessages?: number;
+}
+
+/**
+ * Parse xx-network output to extract relevant information
+ */
+function parseXXNetworkOutput(output: string): XXNetworkResponse {
+  const result: XXNetworkResponse = {
+    messageIds: [],
+    roundIds: [],
+    receivedMessages: 0,
+  };
+
+  const lines = output.split('\n');
+  
+  for (const line of lines) {
+    // Extract DMPUBKEY
+    if (line.startsWith('DMPUBKEY:')) {
+      result.dmPubKey = line.replace('DMPUBKEY:', '').trim();
+    }
+    // Extract DMTOKEN
+    else if (line.startsWith('DMTOKEN:')) {
+      result.dmToken = line.replace('DMTOKEN:', '').trim();
+    }
+    // Extract DMRECVPUBKEY
+    else if (line.startsWith('DMRECVPUBKEY:')) {
+      result.dmRecvPubKey = line.replace('DMRECVPUBKEY:', '').trim();
+    }
+    // Extract DMRECVTOKEN
+    else if (line.startsWith('DMRECVTOKEN:')) {
+      result.dmRecvToken = line.replace('DMRECVTOKEN:', '').trim();
+    }
+    // Extract User ReceptionID
+    else if (line.startsWith('User ReceptionID:')) {
+      result.userReceptionID = line.replace('User ReceptionID:', '').trim();
+    }
+    // Extract Network Status
+    else if (line.startsWith('Network Status:')) {
+      const statusStr = line.replace('Network Status:', '').trim();
+      result.networkStatus = statusStr === 'true';
+    }
+    // Extract DM Send message IDs and round IDs
+    else if (line.startsWith('DM Send:')) {
+      const match = line.match(/DM Send:\s*([^,]+),\s*(\d+),/);
+      if (match) {
+        result.messageIds?.push(match[1].trim());
+        result.roundIds?.push(parseInt(match[2], 10));
+      }
+    }
+    // Count received messages
+    else if (line.includes('Message received')) {
+      result.receivedMessages = (result.receivedMessages || 0) + 1;
+    }
+  }
+
+  return result;
+}
+
 /**
  * Send a message to xx-network using the Go implementation
  * @param message - The message to send (will be JSON stringified if it's an object)
- * @returns Promise that resolves when the command completes
+ * @returns Promise that resolves with parsed xx-network response data
  */
-export async function sendToXXNetwork(message: DeviceEntity | string): Promise<void> {
+export async function sendToXXNetwork(message: DeviceEntity | string): Promise<XXNetworkResponse> {
   const xxNetworkDir = path.join(process.cwd(), 'xx-network');
   
   // Stringify the message if it's an object
@@ -33,21 +100,34 @@ export async function sendToXXNetwork(message: DeviceEntity | string): Promise<v
   try {
     const { stdout, stderr } = await execAsync(command, {
       cwd: xxNetworkDir,
-      timeout: 60000, // 60 second timeout
+      timeout: 90000, // 90 second timeout (increased for network registration)
     });
 
-    if (stderr && !stderr.includes('DM Send')) {
-      console.error('xx-network stderr:', stderr);
-    }
+    // Combine stdout and stderr (Go program outputs to both)
+    const combinedOutput = (stdout || '') + '\n' + (stderr || '');
     
-    if (stdout) {
-      console.log('xx-network stdout:', stdout);
-    }
+    // Parse the output to extract relevant information
+    const parsedData = parseXXNetworkOutput(combinedOutput);
+    
+    // Log the output for debugging
+    console.log('xx-network output:', combinedOutput);
+    
+    return parsedData;
   } catch (error: any) {
     // The Go program might exit with non-zero code even on success
     // Check if it's a timeout or actual error
     if (error.code === 'ETIMEDOUT') {
       throw new Error('xx-network command timed out');
+    }
+    
+    // Try to parse output even if there was an error (the Go program might have succeeded)
+    const combinedOutput = (error.stdout || '') + '\n' + (error.stderr || '');
+    const parsedData = parseXXNetworkOutput(combinedOutput);
+    
+    // If we got some data, return it (partial success)
+    if (parsedData.dmPubKey || parsedData.messageIds?.length) {
+      console.log('xx-network partial success, parsed data:', parsedData);
+      return parsedData;
     }
     
     // Log the error but don't fail if it's just the Go program exiting
@@ -58,6 +138,9 @@ export async function sendToXXNetwork(message: DeviceEntity | string): Promise<v
     if (!error.stdout && !error.stderr) {
       throw new Error(`Failed to execute xx-network command: ${error.message}`);
     }
+    
+    // Return empty result if we couldn't parse anything
+    return parsedData;
   }
 }
 

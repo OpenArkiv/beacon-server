@@ -361,6 +361,41 @@ async function testWhistleblowUpload(privateKey: string, deviceName: string) {
     console.log(`   Node ID: ${response.data.data?.nodeId || entity.nodeId}`);
     console.log(`   Whistleblow: ${response.data.data?.whistleblow || true}`);
     
+    // Log xx-network response data
+    const xxNetwork = response.data.data?.xxNetwork;
+    if (xxNetwork) {
+      console.log('\n   📡 xx-Network Response Data:');
+      if (xxNetwork.dmPubKey) {
+        console.log(`      DM Pub Key: ${xxNetwork.dmPubKey}`);
+      }
+      if (xxNetwork.dmToken) {
+        console.log(`      DM Token: ${xxNetwork.dmToken}`);
+      }
+      if (xxNetwork.dmRecvPubKey) {
+        console.log(`      DM Recv Pub Key: ${xxNetwork.dmRecvPubKey}`);
+      }
+      if (xxNetwork.dmRecvToken) {
+        console.log(`      DM Recv Token: ${xxNetwork.dmRecvToken}`);
+      }
+      if (xxNetwork.userReceptionID) {
+        console.log(`      User Reception ID: ${xxNetwork.userReceptionID}`);
+      }
+      if (xxNetwork.networkStatus !== undefined) {
+        console.log(`      Network Status: ${xxNetwork.networkStatus ? '✅ Connected' : '❌ Disconnected'}`);
+      }
+      if (xxNetwork.messageIds && xxNetwork.messageIds.length > 0) {
+        console.log(`      Message IDs (${xxNetwork.messageIds.length}): ${xxNetwork.messageIds.slice(0, 3).join(', ')}${xxNetwork.messageIds.length > 3 ? '...' : ''}`);
+      }
+      if (xxNetwork.roundIds && xxNetwork.roundIds.length > 0) {
+        console.log(`      Round IDs (${xxNetwork.roundIds.length}): ${xxNetwork.roundIds.slice(0, 3).join(', ')}${xxNetwork.roundIds.length > 3 ? '...' : ''}`);
+      }
+      if (xxNetwork.receivedMessages !== undefined) {
+        console.log(`      Received Messages: ${xxNetwork.receivedMessages}`);
+      }
+    } else {
+      console.log('   ⚠️  No xx-network data in response');
+    }
+    
     return true;
   } catch (error: any) {
     if (error.code === 'ECONNREFUSED') {

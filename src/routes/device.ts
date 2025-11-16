@@ -101,7 +101,7 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
     // If whistleblow is true, send to xx-network instead of Arkiv
     if (whistleblow) {
       try {
-        await sendToXXNetwork(deviceEntity);
+        const xxNetworkData = await sendToXXNetwork(deviceEntity);
         
         res.status(200).json({
           success: true,
@@ -109,6 +109,17 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
           data: {
             nodeId: deviceEntity.nodeId,
             whistleblow: true,
+            xxNetwork: {
+              dmPubKey: xxNetworkData.dmPubKey,
+              dmToken: xxNetworkData.dmToken,
+              dmRecvPubKey: xxNetworkData.dmRecvPubKey,
+              dmRecvToken: xxNetworkData.dmRecvToken,
+              userReceptionID: xxNetworkData.userReceptionID,
+              networkStatus: xxNetworkData.networkStatus,
+              messageIds: xxNetworkData.messageIds,
+              roundIds: xxNetworkData.roundIds,
+              receivedMessages: xxNetworkData.receivedMessages,
+            },
           },
         });
         return;
