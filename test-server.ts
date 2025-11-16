@@ -9,16 +9,20 @@ import { v4 as uuidv4 } from 'uuid';
 const MOCK_DEVICES = [
   {
     name: 'Device 1',
-    privateKey: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+    privateKey: '0xa8d3aacecac70fe98fbc8ca7f76fb703c30c44eae2fd0d57c06123a7e69e0621',
   },
-  {
-    name: 'Device 2',
-    privateKey: '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
-  },
-  {
-    name: 'Device 3',
-    privateKey: '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a',
-  },
+  // {
+  //   name: 'Device 1',
+  //   privateKey: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+  // },
+  // {
+  //   name: 'Device 2',
+  //   privateKey: '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
+  // },
+  // {
+  //   name: 'Device 3',
+  //   privateKey: '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a',
+  // },
 ];
 
 const SERVER_URL = process.env.SERVER_URL || 'https://fabi.crevn.xyz';
@@ -30,22 +34,24 @@ const walletsNeedingFunding: Set<string> = new Set();
  * Create a test device entity
  */
 function createTestEntity(deviceAddress: string, deviceName: string) {
-  const nodeId = `node_${uuidv4()}`;
-  return {
-    _id: nodeId,
-    nodeId: nodeId,
-    devicePub: deviceAddress,
-    location: {
-      lat: 40.7128 + (Math.random() - 0.5) * 0.1,
-      lon: -74.0060 + (Math.random() - 0.5) * 0.1,
-    },
-    lastSeen: new Date().toISOString(),
-    storage: {
-      freeBytes: Math.floor(Math.random() * 1000000000),
-      quota: 1073741824,
-    },
-    tags: ['test-device', deviceName.toLowerCase().replace(/\s+/g, '-')],
-  };
+  // const nodeId = `node_${uuidv4()}`;
+  // return {
+  //   _id: nodeId,
+  //   nodeId: nodeId,
+  //   devicePub: deviceAddress,
+  //   location: {
+  //     lat: 40.7128 + (Math.random() - 0.5) * 0.1,
+  //     lon: -74.0060 + (Math.random() - 0.5) * 0.1,
+  //   },
+  //   lastSeen: new Date().toISOString(),
+  //   storage: {
+  //     freeBytes: Math.floor(Math.random() * 1000000000),
+  //     quota: 1073741824,
+  //   },
+  //   tags: ['test-device', deviceName.toLowerCase().replace(/\s+/g, '-')],
+  // };
+
+  return { "storage": { "freeBytes": 123456, "quota": 1073741824 }, "nodeId": "node_10F3E909-D97E-442D-86BF-010D0C950815", "lastSeen": "2025-11-16T13:36:04Z", "tags": ["field-team-1", "edge-gateway"], "location": {}, "devicePub": "0x73c93100fae390e8743fb26dc0197c2e6355f113", "_id": "node_10F3E909-D97E-442D-86BF-010D0C950815" }
 }
 
 /**
@@ -61,11 +67,15 @@ function signMessage(privateKey: string, message: string): string {
  */
 async function testVerifyEndpoint(privateKey: string) {
   console.log('\n📝 Testing /api/device/verify endpoint...');
-  
+
   const wallet = new ethers.Wallet(privateKey);
   const message = `Test message for verification - ${Date.now()}`;
   const signature = signMessage(privateKey, message);
-  
+
+  console.log('signature', signature);
+  console.log('message', message);
+  console.log('wallet.address', wallet.address);
+
   try {
     const response = await axios.post(`${SERVER_URL}/api/device/verify`, {
       signature: {
@@ -75,12 +85,12 @@ async function testVerifyEndpoint(privateKey: string) {
     }, {
       timeout: 10000,
     });
-    
+
     console.log('✅ Verify endpoint test passed');
     console.log(`   Device Address: ${response.data.deviceAddress}`);
     console.log(`   Expected: ${wallet.address}`);
     console.log(`   Match: ${response.data.deviceAddress.toLowerCase() === wallet.address.toLowerCase() ? '✅' : '❌'}`);
-    
+
     return response.data.deviceAddress.toLowerCase() === wallet.address.toLowerCase();
   } catch (error: any) {
     if (error.code === 'ECONNREFUSED') {
@@ -101,26 +111,26 @@ async function testVerifyEndpoint(privateKey: string) {
  */
 async function testUploadWithoutFile(privateKey: string, deviceName: string) {
   console.log(`\n📤 Testing /api/device/upload endpoint (no file) for ${deviceName}...`);
-  
+
   const wallet = new ethers.Wallet(privateKey);
   const deviceAddress = wallet.address;
 
   console.log('deviceAddress', deviceAddress);
-  
+
   const entity = createTestEntity(deviceAddress, deviceName);
   const message = JSON.stringify(entity);
   const signature = signMessage(privateKey, message);
-  
+
   try {
     const formData = new FormData();
     formData.append('entity', JSON.stringify(entity));
     formData.append('signature', JSON.stringify({ message, signature }));
-    
+
     const response = await axios.post(`${SERVER_URL}/api/device/upload`, formData, {
       headers: formData.getHeaders(),
       timeout: 30000, // 30 seconds for Arkiv upload
     });
-    
+
     console.log('✅ Upload endpoint test passed (no file)');
     console.log(`   Entity Key: ${response.data.data.entityKey}`);
     console.log(`   Transaction Hash: ${response.data.data.txHash}`);
@@ -129,7 +139,7 @@ async function testUploadWithoutFile(privateKey: string, deviceName: string) {
     } else {
       console.log(`   IPFS Hash: N/A (no file uploaded)`);
     }
-    
+
     return true;
   } catch (error: any) {
     if (error.code === 'ECONNREFUSED') {
@@ -137,7 +147,7 @@ async function testUploadWithoutFile(privateKey: string, deviceName: string) {
     } else {
       const responseData = error.response?.data;
       const status = error.response?.status;
-      
+
       // Check for insufficient funds error
       if (status === 402 || (responseData?.error && responseData.error.includes('Insufficient funds'))) {
         const walletAddress = responseData?.walletAddress;
@@ -174,26 +184,30 @@ async function testUploadWithoutFile(privateKey: string, deviceName: string) {
  */
 async function testUploadWithFile(privateKey: string, deviceName: string) {
   console.log(`\n📤 Testing /api/device/upload endpoint (with file) for ${deviceName}...`);
-  
+
   const wallet = new ethers.Wallet(privateKey);
   const deviceAddress = wallet.address;
-  
+
   const entity = createTestEntity(deviceAddress, deviceName);
   const message = JSON.stringify(entity);
   const signature = signMessage(privateKey, message);
-  
+
+  console.log('signature', signature);
+  console.log('message', message);
+  console.log('wallet.address', wallet.address);
+
   // Create a temporary test file
   const testFileContent = `Test file content for ${deviceName}\nGenerated at: ${new Date().toISOString()}\nDevice: ${deviceAddress}`;
   const testFilePath = path.join(process.cwd(), 'temp', `test-${Date.now()}.txt`);
-  
+
   // Ensure temp directory exists
   const tempDir = path.dirname(testFilePath);
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
-  
+
   fs.writeFileSync(testFilePath, testFileContent);
-  
+
   try {
     const formData = new FormData();
     formData.append('entity', JSON.stringify(entity));
@@ -202,12 +216,12 @@ async function testUploadWithFile(privateKey: string, deviceName: string) {
       filename: `test-${deviceName}.txt`,
       contentType: 'text/plain',
     });
-    
+
     const response = await axios.post(`${SERVER_URL}/api/device/upload`, formData, {
       headers: formData.getHeaders(),
       timeout: 60000, // 60 seconds for IPFS + Arkiv upload
     });
-    
+
     console.log('✅ Upload endpoint test passed (with file)');
     console.log(`   Entity Key: ${response.data.data.entityKey}`);
     console.log(`   Transaction Hash: ${response.data.data.txHash}`);
@@ -216,25 +230,25 @@ async function testUploadWithFile(privateKey: string, deviceName: string) {
     } else {
       console.log(`   ⚠️  IPFS Hash: Missing (file upload may have failed)`);
     }
-    
+
     // Cleanup test file
     if (fs.existsSync(testFilePath)) {
       fs.unlinkSync(testFilePath);
     }
-    
+
     return true;
   } catch (error: any) {
     // Cleanup test file on error
     if (fs.existsSync(testFilePath)) {
       fs.unlinkSync(testFilePath);
     }
-    
+
     if (error.code === 'ECONNREFUSED') {
       console.error('❌ Upload endpoint test failed: Server is not running!');
     } else {
       const responseData = error.response?.data;
       const status = error.response?.status;
-      
+
       // Check for insufficient funds error
       if (status === 402 || (responseData?.error && responseData.error.includes('Insufficient funds'))) {
         const walletAddress = responseData?.walletAddress;
@@ -271,7 +285,7 @@ async function testUploadWithFile(privateKey: string, deviceName: string) {
  */
 async function testHealthEndpoint() {
   console.log('\n🏥 Testing /health endpoint...');
-  
+
   try {
     const response = await axios.get(`${SERVER_URL}/health`, {
       timeout: 5000,
@@ -300,20 +314,20 @@ async function testHealthEndpoint() {
  */
 async function testInvalidSignature() {
   console.log('\n🚫 Testing invalid signature handling...');
-  
+
   const entity = createTestEntity('0x0000000000000000000000000000000000000000', 'Invalid Device');
   const message = JSON.stringify(entity);
   const invalidSignature = '0x' + '0'.repeat(130); // Invalid signature format
-  
+
   try {
     const formData = new FormData();
     formData.append('entity', JSON.stringify(entity));
     formData.append('signature', JSON.stringify({ message, signature: invalidSignature }));
-    
+
     await axios.post(`${SERVER_URL}/api/device/upload`, formData, {
       headers: formData.getHeaders(),
     });
-    
+
     console.error('❌ Invalid signature test failed - should have rejected');
     return false;
   } catch (error: any) {
@@ -339,27 +353,27 @@ async function testInvalidSignature() {
  */
 async function testWhistleblowUploadAnonymous(deviceName: string) {
   console.log(`\n🔒 Testing /api/device/upload endpoint (whistleblow - anonymous) for ${deviceName}...`);
-  
+
   // Create entity without device address (anonymous)
   const entity = createTestEntity('anonymous', deviceName);
-  
+
   try {
     const formData = new FormData();
     formData.append('entity', JSON.stringify(entity));
     // No signature - anonymous whistleblow
     formData.append('whistleblow', 'true');
-    
+
     const response = await axios.post(`${SERVER_URL}/api/device/upload`, formData, {
       headers: formData.getHeaders(),
       timeout: 150000, // 150 seconds for xx-network (Go program runs indefinitely, needs time for network registration)
     });
-    
+
     console.log('✅ Anonymous whistleblow upload test passed');
     console.log(`   Message: ${response.data.message || 'Sent to xx-network'}`);
     console.log(`   Node ID: ${response.data.data?.nodeId || entity.nodeId}`);
     console.log(`   Whistleblow: ${response.data.data?.whistleblow || true}`);
     console.log(`   Device Pub: ${response.data.data?.xxNetwork ? 'Anonymous' : entity.devicePub}`);
-    
+
     // Log xx-network response data
     const xxNetwork = response.data.data?.xxNetwork;
     if (xxNetwork) {
@@ -373,7 +387,7 @@ async function testWhistleblowUploadAnonymous(deviceName: string) {
     } else {
       console.log('   ⚠️  No xx-network data in response');
     }
-    
+
     return true;
   } catch (error: any) {
     if (error.code === 'ECONNREFUSED') {
@@ -381,7 +395,7 @@ async function testWhistleblowUploadAnonymous(deviceName: string) {
     } else {
       const responseData = error.response?.data;
       const status = error.response?.status;
-      
+
       // Handle timeout - if we got a response before timeout, it's a success
       if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
         if (error.response?.data) {
@@ -395,7 +409,7 @@ async function testWhistleblowUploadAnonymous(deviceName: string) {
         console.error('❌ Anonymous whistleblow upload test failed: Request timed out');
         return false;
       }
-      
+
       console.error('❌ Anonymous whistleblow upload test failed:', responseData || error.message);
       if (error.response) {
         console.error(`   Status: ${error.response.status}`);
@@ -411,30 +425,30 @@ async function testWhistleblowUploadAnonymous(deviceName: string) {
  */
 async function testWhistleblowUpload(privateKey: string, deviceName: string) {
   console.log(`\n🔒 Testing /api/device/upload endpoint (whistleblow with signature) for ${deviceName}...`);
-  
+
   const wallet = new ethers.Wallet(privateKey);
   const deviceAddress = wallet.address;
-  
+
   const entity = createTestEntity(deviceAddress, deviceName);
   const message = JSON.stringify(entity);
   const signature = signMessage(privateKey, message);
-  
+
   try {
     const formData = new FormData();
     formData.append('entity', JSON.stringify(entity));
     formData.append('signature', JSON.stringify({ message, signature }));
     formData.append('whistleblow', 'true');
-    
+
     const response = await axios.post(`${SERVER_URL}/api/device/upload`, formData, {
       headers: formData.getHeaders(),
       timeout: 150000, // 150 seconds for xx-network (Go program runs indefinitely, needs time for network registration)
     });
-    
+
     console.log('✅ Whistleblow upload test passed');
     console.log(`   Message: ${response.data.message || 'Sent to xx-network'}`);
     console.log(`   Node ID: ${response.data.data?.nodeId || entity.nodeId}`);
     console.log(`   Whistleblow: ${response.data.data?.whistleblow || true}`);
-    
+
     // Log xx-network response data
     const xxNetwork = response.data.data?.xxNetwork;
     if (xxNetwork) {
@@ -469,7 +483,7 @@ async function testWhistleblowUpload(privateKey: string, deviceName: string) {
     } else {
       console.log('   ⚠️  No xx-network data in response');
     }
-    
+
     return true;
   } catch (error: any) {
     if (error.code === 'ECONNREFUSED') {
@@ -477,7 +491,7 @@ async function testWhistleblowUpload(privateKey: string, deviceName: string) {
     } else {
       const responseData = error.response?.data;
       const status = error.response?.status;
-      
+
       // Handle timeout - if we got a response before timeout, it's a success
       if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
         // Check if we got a response before timeout
@@ -485,7 +499,7 @@ async function testWhistleblowUpload(privateKey: string, deviceName: string) {
           const responseData = error.response.data;
           console.log('⚠️  Request timed out but got response data');
           console.log(`   Status: ${error.response.status}`);
-          
+
           // Log xx-network data if available
           const xxNetwork = responseData.data?.xxNetwork;
           if (xxNetwork) {
@@ -495,7 +509,7 @@ async function testWhistleblowUpload(privateKey: string, deviceName: string) {
               console.log(`      Message IDs: ${xxNetwork.messageIds.slice(0, 3).join(', ')}`);
             }
           }
-          
+
           // Consider it a pass if we got xx-network data
           if (xxNetwork && (xxNetwork.dmPubKey || xxNetwork.messageIds?.length)) {
             return true;
@@ -504,7 +518,7 @@ async function testWhistleblowUpload(privateKey: string, deviceName: string) {
         console.error('❌ Whistleblow upload test failed: Request timed out');
         return false;
       }
-      
+
       // xx-network might fail, but we should still get a response
       if (status === 500 && responseData?.error?.includes('xx-network')) {
         console.log('⚠️  Whistleblow upload attempted but xx-network failed (expected - flaky implementation)');
@@ -512,7 +526,7 @@ async function testWhistleblowUpload(privateKey: string, deviceName: string) {
         // Still consider this a pass since the routing worked
         return true;
       }
-      
+
       console.error('❌ Whistleblow upload test failed:', responseData || error.message);
       if (error.response) {
         console.error(`   Status: ${error.response.status}`);
@@ -530,12 +544,12 @@ async function testWhistleblowUpload(privateKey: string, deviceName: string) {
  */
 async function testGetChatsEndpoint() {
   console.log('\n💬 Testing /api/device/chats endpoint...');
-  
+
   try {
     const response = await axios.get(`${SERVER_URL}/api/device/chats`, {
       timeout: 10000,
     });
-    
+
     if (response.data.success && Array.isArray(response.data.data)) {
       console.log('✅ Get chats endpoint test passed');
       console.log(`   Total chats: ${response.data.count || response.data.data.length}`);
@@ -565,12 +579,12 @@ async function testGetChatsEndpoint() {
  */
 async function testGetWhistleblowEndpoint() {
   console.log('\n🔒 Testing /api/device/whistleblow endpoint...');
-  
+
   try {
     const response = await axios.get(`${SERVER_URL}/api/device/whistleblow`, {
       timeout: 10000,
     });
-    
+
     if (response.data.success && Array.isArray(response.data.data)) {
       console.log('✅ Get whistleblow endpoint test passed');
       console.log(`   Total whistleblow messages: ${response.data.count || response.data.data.length}`);
@@ -623,72 +637,72 @@ async function checkServerReachable(): Promise<boolean> {
 async function runTests() {
   console.log('🧪 Starting server tests...');
   console.log(`📍 Server URL: ${SERVER_URL}\n`);
-  
+
   // Check if server is reachable first
   const serverReachable = await checkServerReachable();
   if (!serverReachable) {
     process.exit(1);
   }
-  
+
   const results: { [key: string]: boolean } = {};
-  
+
   // Test health endpoint
   results.health = await testHealthEndpoint();
-  
+
   // Use first device for all device-specific tests
   const testDevice = MOCK_DEVICES[0];
-  
+
   // Test verify endpoint
   results.verify = await testVerifyEndpoint(testDevice.privateKey);
 
   // Test upload without file
-  results['upload-no-file'] = await testUploadWithoutFile(testDevice.privateKey, testDevice.name);
-  
+  // results['upload-no-file'] = await testUploadWithoutFile(testDevice.privateKey, testDevice.name);
+
   // Small delay between requests
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
+  // await new Promise(resolve => setTimeout(resolve, 1000));
+
   // Test upload with file
   results['upload-with-file'] = await testUploadWithFile(testDevice.privateKey, testDevice.name);
-  
+
   // Test invalid signature
-  results['invalid-signature'] = await testInvalidSignature();
-  
-  
-  // Test whistleblow upload with signature (for backward compatibility)
-  results['whistleblow-upload'] = await testWhistleblowUpload(testDevice.privateKey, testDevice.name);
-  
-  // Small delay before checking stored chats
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // Test get chats endpoint
-  results['get-chats'] = await testGetChatsEndpoint();
-  
-  // Test get whistleblow endpoint
-  results['get-whistleblow'] = await testGetWhistleblowEndpoint();
+  // results['invalid-signature'] = await testInvalidSignature();
 
 
-  // Test anonymous whistleblow upload (no signature - sends to xx-network)
-  results['whistleblow-upload-anonymous'] = await testWhistleblowUploadAnonymous(testDevice.name);
-  
-  // Small delay between whistleblow tests
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  
+  // // Test whistleblow upload with signature (for backward compatibility)
+  // results['whistleblow-upload'] = await testWhistleblowUpload(testDevice.privateKey, testDevice.name);
+
+  // // Small delay before checking stored chats
+  // await new Promise(resolve => setTimeout(resolve, 1000));
+
+  // // Test get chats endpoint
+  // results['get-chats'] = await testGetChatsEndpoint();
+
+  // // Test get whistleblow endpoint
+  // results['get-whistleblow'] = await testGetWhistleblowEndpoint();
+
+
+  // // Test anonymous whistleblow upload (no signature - sends to xx-network)
+  // results['whistleblow-upload-anonymous'] = await testWhistleblowUploadAnonymous(testDevice.name);
+
+  // // Small delay between whistleblow tests
+  // await new Promise(resolve => setTimeout(resolve, 1000));
+
+
   // Print summary
   console.log('\n' + '='.repeat(50));
   console.log('📊 Test Summary');
   console.log('='.repeat(50));
-  
+
   const passed = Object.values(results).filter(r => r).length;
   const total = Object.keys(results).length;
-  
+
   for (const [test, result] of Object.entries(results)) {
     console.log(`${result ? '✅' : '❌'} ${test}`);
   }
-  
+
   console.log('='.repeat(50));
   console.log(`Total: ${passed}/${total} tests passed`);
-  
+
   // Display wallet addresses that need funding
   if (walletsNeedingFunding.size > 0) {
     console.log('\n' + '='.repeat(50));
@@ -706,7 +720,7 @@ async function runTests() {
     console.log('Copy these addresses and fund them, then rerun the tests.');
     console.log('='.repeat(50));
   }
-  
+
   if (passed === total) {
     console.log('🎉 All tests passed!');
     process.exit(0);

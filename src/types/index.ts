@@ -12,6 +12,7 @@ export interface DeviceEntity {
     quota: number;
   };
   tags?: string[];
+  text: string;
 }
 
 export interface SignaturePayload {
