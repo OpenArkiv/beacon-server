@@ -2,18 +2,51 @@
 
 import { useEffect, useState } from "react"
 
-// Location pins data: [longitude, latitude, label]
-const LOCATION_PINS: [number, number, string][] = [
-  [-74.006, 40.7128, "New York"], // New York
-  // [-0.1276, 51.5074, "London"], // London
-  [139.6503, 35.6762, "Tokyo"], // Tokyo
-  [151.2093, -33.8688, "Sydney"], // Sydney
-  // [-122.4194, 37.7749, "San Francisco"], // San Francisco
-  // [2.3522, 48.8566, "Paris"], // Paris
-  [103.8198, 1.3521, "Singapore"], // Singapore
-  [-46.6333, -23.5505, "São Paulo"], // São Paulo
-  [18.4241, -33.9249, "Cape Town"], // Cape Town
-  [121.5654, 25.0330, "Taipei"], // Taipei
+// Entity pins data: each entity is mapped to a location
+interface EntityPin {
+  longitude: number
+  latitude: number
+  entityKey: string
+  label: string
+}
+
+const ENTITY_PINS: EntityPin[] = [
+  {
+    longitude: -74.006,
+    latitude: 40.7128,
+    entityKey: "0x6cc9153ec65a9ce3f38612aacc3e42b515c873447cd7ded61d50827e42c837da",
+    label: "New York"
+  },
+  {
+    longitude: 139.6503,
+    latitude: 35.6762,
+    entityKey: "0xa6d88ab5e0431e14d4c128732f284c1b01264f3aea6da6e6795be8ecdb046324",
+    label: "Tokyo"
+  },
+  {
+    longitude: 151.2093,
+    latitude: -33.8688,
+    entityKey: "0x41b7c352cd68e134e17f632a5bfdd115f76f358b283c5d2052b15153b08122f5",
+    label: "Sydney"
+  },
+  {
+    longitude: 103.8198,
+    latitude: 1.3521,
+    entityKey: "0x64ee0155d327175a26299902458545a997760e604f656b17160beb020eedb9b9",
+    label: "Singapore"
+  },
+  {
+    longitude: -46.6333,
+    latitude: -23.5505,
+    entityKey: "0x56541957f79b8fc396fa570cb5e5fcd16eb2c4f27e4852aae27f37f1d21d3624",
+    label: "São Paulo"
+  },
+  {
+    longitude: 18.4241,
+    latitude: -33.9249,
+    entityKey: "0xa7888b205abb280d97da8fd48055e49d1b15f3e7e9b41fa4aa964fbb6790dbaa",
+    label: "Cape Town"
+  },
 ]
 
 // Convert lat/lng to SVG coordinates
@@ -89,20 +122,33 @@ export default function HomePage() {
         svgElement.style.maxHeight = "100vh"
 
         // Remove existing pins if any
-        const existingPins = svgElement.querySelectorAll(".location-pin")
+        const existingPins = svgElement.querySelectorAll(".entity-pin")
         existingPins.forEach((pin) => pin.remove())
 
-        // Add location pins
-        const pinColor =   "#45CC2D"
+        // Add entity pins
+        const pinColor = "#45CC2D"
         const pinShadowColor = "#45CC2D"
         
-        LOCATION_PINS.forEach(([lng, lat, label]) => {
-          const [x, y] = latLngToSVG(lng, lat)
+        ENTITY_PINS.forEach((entityPin) => {
+          const [x, y] = latLngToSVG(entityPin.longitude, entityPin.latitude)
           
           // Create pin group
           const pinGroup = document.createElementNS("http://www.w3.org/2000/svg", "g")
-          pinGroup.setAttribute("class", "location-pin")
+          pinGroup.setAttribute("class", "entity-pin")
           pinGroup.setAttribute("transform", `translate(${x}, ${y})`)
+          pinGroup.setAttribute("style", "cursor: pointer;")
+          
+          // Create clickable area (larger invisible circle for better UX)
+          const clickableArea = document.createElementNS("http://www.w3.org/2000/svg", "circle")
+          clickableArea.setAttribute("cx", "0")
+          clickableArea.setAttribute("cy", "0")
+          clickableArea.setAttribute("r", "20")
+          clickableArea.setAttribute("fill", "transparent")
+          clickableArea.setAttribute("style", "cursor: pointer;")
+          clickableArea.addEventListener("click", () => {
+            const explorerUrl = `https://explorer.mendoza.hoodi.arkiv.network/entity/${entityPin.entityKey}?tab=data`
+            window.open(explorerUrl, "_blank")
+          })
           
           // Pin shadow (slightly offset)
           const shadow = document.createElementNS("http://www.w3.org/2000/svg", "circle")
@@ -119,7 +165,11 @@ export default function HomePage() {
           outerCircle.setAttribute("r", "8")
           outerCircle.setAttribute("fill", pinColor)
           outerCircle.setAttribute("opacity", "0.8")
-          outerCircle.setAttribute("style", "animation: pinBlink 2s ease-in-out infinite;")
+          outerCircle.setAttribute("style", "animation: pinBlink 2s ease-in-out infinite; cursor: pointer;")
+          outerCircle.addEventListener("click", () => {
+            const explorerUrl = `https://explorer.mendoza.hoodi.arkiv.network/entity/${entityPin.entityKey}?tab=data`
+            window.open(explorerUrl, "_blank")
+          })
           
           // Pin inner dot
           const innerCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle")
@@ -127,6 +177,11 @@ export default function HomePage() {
           innerCircle.setAttribute("cy", "0")
           innerCircle.setAttribute("r", "4")
           innerCircle.setAttribute("fill", "#ffffff")
+          innerCircle.setAttribute("style", "cursor: pointer;")
+          innerCircle.addEventListener("click", () => {
+            const explorerUrl = `https://explorer.mendoza.hoodi.arkiv.network/entity/${entityPin.entityKey}?tab=data`
+            window.open(explorerUrl, "_blank")
+          })
           
           // Pin pulse ring
           const pulseRing = document.createElementNS("http://www.w3.org/2000/svg", "circle")
@@ -137,8 +192,13 @@ export default function HomePage() {
           pulseRing.setAttribute("stroke", pinColor)
           pulseRing.setAttribute("stroke-width", "2")
           pulseRing.setAttribute("opacity", "0.6")
-          pulseRing.setAttribute("style", "animation: pinPulse 2s ease-out infinite;")
+          pulseRing.setAttribute("style", "animation: pinPulse 2s ease-out infinite; cursor: pointer;")
+          pulseRing.addEventListener("click", () => {
+            const explorerUrl = `https://explorer.mendoza.hoodi.arkiv.network/entity/${entityPin.entityKey}?tab=data`
+            window.open(explorerUrl, "_blank")
+          })
           
+          pinGroup.appendChild(clickableArea)
           pinGroup.appendChild(shadow)
           pinGroup.appendChild(pulseRing)
           pinGroup.appendChild(outerCircle)
@@ -171,6 +231,16 @@ export default function HomePage() {
               opacity: 0;
               transform: scale(2.5);
             }
+          }
+          
+          .entity-pin:hover circle[fill="#45CC2D"] {
+            opacity: 1 !important;
+            transform: scale(1.2);
+            transition: all 0.2s ease;
+          }
+          
+          .entity-pin:hover circle[stroke="#45CC2D"] {
+            opacity: 0.8 !important;
           }
         `
         
