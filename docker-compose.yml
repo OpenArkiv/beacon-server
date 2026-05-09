@@ -1,0 +1,65 @@
+# beacon-server stack for EC2.
+#
+#   sudo docker compose up -d
+#
+# Caddy terminates TLS (auto-issues a Let's Encrypt cert for $DOMAIN) and
+# reverse-proxies to the beacon container on the internal Docker network.
+# The beacon's port is *not* published to the host — only Caddy is exposed.
+#
+# Required env (in .env next to this file):
+#   DOMAIN          fully-qualified hostname pointing at this EC2 instance
+#   ACME_EMAIL      contact for Let's Encrypt
+#   SERVER_SALT     long random string; never rotate after first deploy
+#   PINATA_API_KEY, PINATA_SECRET_KEY
+# Optional:
+#   ARKIV_RPC_URL, LOG_LEVEL, CORS_ORIGINS, RATE_LIMIT_*
+
+services:
+  beacon:
+    build: .
+    image: beacon-server:latest
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      SERVER_SALT: ${SERVER_SALT:?set SERVER_SALT in .env}
+      PINATA_API_KEY: ${PINATA_API_KEY:?set PINATA_API_KEY in .env}
+      PINATA_SECRET_KEY: ${PINATA_SECRET_KEY:?set PINATA_SECRET_KEY in .env}
+      ARKIV_RPC_URL: ${ARKIV_RPC_URL:-https://mendoza.hoodi.arkiv.network/rpc}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-30}
+      # Leave bypass off in production. Set to "true" only for short-lived demos.
+      ALLOW_BYPASS_SIGNATURE: ${ALLOW_BYPASS_SIGNATURE:-false}
+    volumes:
+      - beacon_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:'+(process.env.PORT||3000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - beacon
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # cert storage — survives restarts
+      - caddy_config:/config
+
+volumes:
+  beacon_data:
+  caddy_data:
+  caddy_config:

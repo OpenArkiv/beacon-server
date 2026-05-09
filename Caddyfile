@@ -1,0 +1,46 @@
+# Caddy will auto-provision a Let's Encrypt cert for {$DOMAIN} on first start
+# and renew it indefinitely. Keep the EC2 security group open on 80 and 443
+# (the ACME HTTP-01 challenge needs port 80).
+
+{
+    email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+    encode gzip
+
+    # Health check (open) — useful for ALB / external uptime monitors.
+    @health path /health
+    handle @health {
+        reverse_proxy beacon:3000
+    }
+
+    # API routes — pass through to beacon. The app does its own auth + rate
+    # limiting; Caddy adds standard hardening headers and request logging.
+    handle /api/* {
+        reverse_proxy beacon:3000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Anything else gets a 404 so we don't accidentally proxy unknown paths.
+    handle {
+        respond "Not found" 404
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        # Remove default Server header
+        -Server
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

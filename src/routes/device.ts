@@ -1,8 +1,11 @@
 import express, { Request, Response } from 'express';
-import { verifySignatureAndGetAddress, generateServerWalletFromAddress } from '../utils/signature.js';
+import {
+  verifySignatureAndGetAddress,
+  verifyEd25519Signature,
+  generateServerWalletFromIdentifier,
+} from '../utils/signature.js';
 import { createArkivWalletClient, uploadEntityToArkiv, getWalletAddressFromPrivateKey } from '../utils/arkiv.js';
 import { uploadToPinata, cleanupTempFile } from '../utils/ipfs.js';
-import { sendToXXNetwork } from '../utils/xxnetwork.js';
 import { chatStorage } from '../utils/storage.js';
 import { upload } from '../middleware/upload.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -12,8 +15,18 @@ import { ethers } from 'ethers';
 
 const router = express.Router();
 
-// Mock device private key for dev/demo purposes when bypassing signature
-const MOCK_DEVICE_PRIVATE_KEY = '0xa8d3aacecac70fe98fbc8ca7f76fb703c30c44eae2fd0d57c06123a7e69e0621';
+// Signature bypass is a dev/demo escape hatch. It must be explicitly enabled
+// via ALLOW_BYPASS_SIGNATURE=true in the environment, otherwise any incoming
+// `bypassSignature=true` is rejected. Production deployments should leave it
+// off so a real device signature is required for every Arkiv upload.
+const BYPASS_SIGNATURE_ALLOWED = process.env.ALLOW_BYPASS_SIGNATURE === 'true';
+
+// When bypass is allowed, the server uses this mock device key to derive its
+// Arkiv-paying wallet. Override via MOCK_DEVICE_PRIVATE_KEY env var; the
+// hardcoded fallback is only used in local dev.
+const MOCK_DEVICE_PRIVATE_KEY =
+  process.env.MOCK_DEVICE_PRIVATE_KEY ??
+  '0xa8d3aacecac70fe98fbc8ca7f76fb703c30c44eae2fd0d57c06123a7e69e0621';
 
 /**
  * POST /api/device/upload
@@ -26,30 +39,39 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
     
     // Parse JSON fields from multipart form data
     let entity: DeviceEntity;
-    let signature: { message: string; signature: string } | undefined;
-    let whistleblow: boolean = false;
+    // Signature payload accepts an optional `pubkey` and `scheme` field.
+    // - scheme="ed25519" + pubkey (32-byte hex) → Ed25519 verification (preferred)
+    // - otherwise → legacy EVM personal_sign verification via ethers
+    let signature: {
+      message: string;
+      signature: string;
+      pubkey?: string;
+      scheme?: string;
+    } | undefined;
     let bypassSignature: boolean = false;
-    
+
     try {
-      entity = typeof req.body.entity === 'string' 
-        ? JSON.parse(req.body.entity) 
+      entity = typeof req.body.entity === 'string'
+        ? JSON.parse(req.body.entity)
         : req.body.entity;
-      
-      // Parse whistleblow field first (before signature validation)
-      if (req.body.whistleblow !== undefined) {
-        whistleblow = typeof req.body.whistleblow === 'string'
-          ? req.body.whistleblow === 'true'
-          : Boolean(req.body.whistleblow);
-      }
-      
+
       // Parse bypassSignature flag (for dev/demo purposes)
       if (req.body.bypassSignature !== undefined) {
-        bypassSignature = typeof req.body.bypassSignature === 'string'
+        const requested = typeof req.body.bypassSignature === 'string'
           ? req.body.bypassSignature === 'true'
           : Boolean(req.body.bypassSignature);
+        if (requested && !BYPASS_SIGNATURE_ALLOWED) {
+          logger.warn('bypassSignature requested but disabled by environment', {
+            path: req.path,
+            method: req.method,
+          });
+          return res.status(403).json({
+            error: 'bypassSignature is not allowed in this environment. Set ALLOW_BYPASS_SIGNATURE=true to enable for dev/demo.',
+          });
+        }
+        bypassSignature = requested;
       }
-      
-      // Parse signature (optional when whistleblow is true)
+
       if (req.body.signature !== undefined) {
         signature = typeof req.body.signature === 'string'
           ? JSON.parse(req.body.signature)
@@ -80,20 +102,18 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
       });
     }
     
-    // Signature is only required for Arkiv uploads (when whistleblow is false)
-    // Unless bypassSignature is enabled for dev/demo purposes
-    if (!whistleblow && !bypassSignature) {
+    // Signature required for Arkiv uploads, unless bypassSignature is enabled (dev/demo)
+    if (!bypassSignature) {
       if (!signature) {
         logger.warn('Missing signature for Arkiv upload', {
           path: req.path,
           method: req.method,
-          whistleblow,
         });
-        return res.status(400).json({ 
-          error: 'Missing required field: signature is required for Arkiv uploads (or set bypassSignature=true for dev/demo)' 
+        return res.status(400).json({
+          error: 'Missing required field: signature is required for Arkiv uploads (or set bypassSignature=true for dev/demo)'
         });
       }
-      
+
       if (!signature.message || !signature.signature) {
         logger.warn('Invalid signature format', {
           path: req.path,
@@ -101,174 +121,128 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
           hasMessage: !!signature.message,
           hasSignature: !!signature.signature,
         });
-        return res.status(400).json({ 
-          error: 'Signature must include message and signature fields' 
+        return res.status(400).json({
+          error: 'Signature must include message and signature fields'
         });
       }
     }
-    
-    // Verify signature and get device address (only for Arkiv uploads)
+
     let deviceAddress: string | undefined;
     let serverPrivateKey: string | undefined;
-    
-    if (!whistleblow) {
-      // If bypassSignature is enabled, use mock device private key directly
-      if (bypassSignature) {
-        try {
-          const mockWallet = new ethers.Wallet(MOCK_DEVICE_PRIVATE_KEY);
-          deviceAddress = mockWallet.address;
-          logger.info('Using mock device address for bypass (bypassSignature enabled)', {
-            deviceAddress,
-            path: req.path,
-            hasSignature: !!signature,
-          });
-        } catch (mockError) {
-          logger.error('Failed to create mock wallet', {
-            error: mockError instanceof Error ? mockError.message : String(mockError),
-            path: req.path,
-            method: req.method,
-          });
-          return res.status(500).json({ 
-            error: `Failed to create mock wallet: ${mockError instanceof Error ? mockError.message : 'Unknown error'}` 
-          });
-        }
-      } else if (signature) {
-        // Normal signature verification flow
-        try {
-          deviceAddress = verifySignatureAndGetAddress(signature.message, signature.signature);
-          logger.info('Signature verified successfully', {
-            deviceAddress,
-            path: req.path,
-          });
-        } catch (error) {
-          logger.error('Signature verification failed', {
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-            signatureMessage: signature.message?.substring(0, 100),
-            signatureLength: signature.signature?.length,
-            path: req.path,
-            method: req.method,
-          });
-          return res.status(401).json({ 
-            error: `Signature verification failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
-          });
-        }
-      }
-      
-      // Ensure deviceAddress is set before generating server wallet
-      if (!deviceAddress) {
-        logger.error('Device address not available for server wallet generation', {
-          bypassSignature,
-          hasSignature: !!signature,
-          whistleblow,
-          path: req.path,
-          method: req.method,
-        });
-        return res.status(400).json({ 
-          error: 'Device address is required. Provide a valid signature or enable bypassSignature for dev/demo.' 
-        });
-      }
-      
-      // Generate server-side wallet from device address
-      const serverSalt = process.env.SERVER_SALT;
-      if (!serverSalt) {
-        logger.error('SERVER_SALT environment variable not set', {
-          path: req.path,
-          method: req.method,
-        });
-        return res.status(500).json({ 
-          error: 'Server configuration error: SERVER_SALT not set' 
-        });
-      }
-      
+
+    if (bypassSignature) {
       try {
-        serverPrivateKey = generateServerWalletFromAddress(deviceAddress, serverSalt);
-        logger.debug('Server wallet generated successfully', {
+        const mockWallet = new ethers.Wallet(MOCK_DEVICE_PRIVATE_KEY);
+        deviceAddress = mockWallet.address;
+        logger.info('Using mock device address for bypass (bypassSignature enabled)', {
           deviceAddress,
           path: req.path,
+          hasSignature: !!signature,
         });
+      } catch (mockError) {
+        logger.error('Failed to create mock wallet', {
+          error: mockError instanceof Error ? mockError.message : String(mockError),
+          path: req.path,
+          method: req.method,
+        });
+        return res.status(500).json({
+          error: `Failed to create mock wallet: ${mockError instanceof Error ? mockError.message : 'Unknown error'}`
+        });
+      }
+    } else if (signature) {
+      const isEd25519 = signature.scheme === 'ed25519' || !!signature.pubkey;
+      try {
+        if (isEd25519) {
+          if (!signature.pubkey) {
+            throw new Error('Ed25519 signatures require a pubkey field');
+          }
+          deviceAddress = verifyEd25519Signature(
+            signature.message,
+            signature.signature,
+            signature.pubkey
+          );
+          logger.info('Ed25519 signature verified', {
+            deviceIdentifier: deviceAddress,
+            path: req.path,
+          });
+        } else {
+          deviceAddress = verifySignatureAndGetAddress(signature.message, signature.signature);
+          logger.info('EVM signature verified', {
+            deviceAddress,
+            path: req.path,
+          });
+        }
       } catch (error) {
-        logger.error('Failed to generate server wallet', {
+        logger.error('Signature verification failed', {
+          scheme: isEd25519 ? 'ed25519' : 'evm',
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined,
-          deviceAddress,
+          signatureMessage: signature.message?.substring(0, 100),
+          signatureLength: signature.signature?.length,
           path: req.path,
           method: req.method,
         });
-        return res.status(500).json({ 
-          error: `Failed to generate server wallet: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        return res.status(401).json({
+          error: `Signature verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`
         });
       }
     }
+
+    if (!deviceAddress) {
+      logger.error('Device address not available for server wallet generation', {
+        bypassSignature,
+        hasSignature: !!signature,
+        path: req.path,
+        method: req.method,
+      });
+      return res.status(400).json({
+        error: 'Device address is required. Provide a valid signature or enable bypassSignature for dev/demo.'
+      });
+    }
+
+    const serverSalt = process.env.SERVER_SALT;
+    if (!serverSalt) {
+      logger.error('SERVER_SALT environment variable not set', {
+        path: req.path,
+        method: req.method,
+      });
+      return res.status(500).json({
+        error: 'Server configuration error: SERVER_SALT not set'
+      });
+    }
+
+    try {
+      serverPrivateKey = generateServerWalletFromIdentifier(deviceAddress, serverSalt);
+      logger.debug('Server wallet generated successfully', {
+        deviceIdentifier: deviceAddress,
+        path: req.path,
+      });
+    } catch (error) {
+      logger.error('Failed to generate server wallet', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        deviceAddress,
+        path: req.path,
+        method: req.method,
+      });
+      return res.status(500).json({
+        error: `Failed to generate server wallet: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
     
-    // Validate and prepare entity
-    // For whistleblow, use entity.devicePub if provided, otherwise use anonymous placeholder
     const deviceEntity: DeviceEntity = {
       _id: entity._id || `node_${uuidv4()}`,
       nodeId: entity.nodeId || entity._id || `node_${uuidv4()}`,
-      devicePub: entity.devicePub || deviceAddress || `anonymous_${uuidv4()}`,
+      devicePub: entity.devicePub || deviceAddress,
       location: entity.location,
       lastSeen: entity.lastSeen || new Date().toISOString(),
       storage: entity.storage,
       tags: entity.tags || [],
       text: entity.text || '',
     };
-    
-    // Store chat in memory
-    chatStorage.storeChat(deviceEntity, whistleblow);
-    
-    // If whistleblow is true, send to xx-network instead of Arkiv
-    if (whistleblow) {
-      try {
-        logger.info('Sending whistleblow message to xx-network', {
-          nodeId: deviceEntity.nodeId,
-          devicePub: deviceEntity.devicePub,
-          path: req.path,
-        });
-        const xxNetworkData = await sendToXXNetwork(deviceEntity);
-        
-        logger.info('Successfully sent message to xx-network', {
-          nodeId: deviceEntity.nodeId,
-          dmPubKey: xxNetworkData.dmPubKey,
-          messageIds: xxNetworkData.messageIds,
-          path: req.path,
-        });
-        
-        res.status(200).json({
-          success: true,
-          message: 'Message sent to xx-network',
-          data: {
-            nodeId: deviceEntity.nodeId,
-            whistleblow: true,
-            xxNetwork: {
-              dmPubKey: xxNetworkData.dmPubKey,
-              dmToken: xxNetworkData.dmToken,
-              dmRecvPubKey: xxNetworkData.dmRecvPubKey,
-              dmRecvToken: xxNetworkData.dmRecvToken,
-              userReceptionID: xxNetworkData.userReceptionID,
-              networkStatus: xxNetworkData.networkStatus,
-              messageIds: xxNetworkData.messageIds,
-              roundIds: xxNetworkData.roundIds,
-              receivedMessages: xxNetworkData.receivedMessages,
-            },
-          },
-        });
-        return;
-      } catch (error) {
-        logger.error('Failed to send to xx-network', {
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-          nodeId: deviceEntity.nodeId,
-          devicePub: deviceEntity.devicePub,
-          path: req.path,
-          method: req.method,
-        });
-        return res.status(500).json({ 
-          error: `Failed to send to xx-network: ${error instanceof Error ? error.message : 'Unknown error'}` 
-        });
-      }
-    }
-    
+
+    chatStorage.storeChat(deviceEntity);
+
     // Upload file to IPFS if provided
     let ipfsHash: string | undefined;
     if (file) {
@@ -316,19 +290,17 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
       }
     }
     
-    // For Arkiv uploads, we need serverPrivateKey (which requires signature)
     if (!serverPrivateKey) {
       logger.error('Server private key missing for Arkiv upload', {
-        whistleblow,
         hasSignature: !!signature,
         path: req.path,
         method: req.method,
       });
-      return res.status(400).json({ 
-        error: 'Server private key is required for Arkiv uploads. Signature must be provided when whistleblow is false.' 
+      return res.status(400).json({
+        error: 'Server private key is required for Arkiv uploads. Provide a valid signature or enable bypassSignature.'
       });
     }
-    
+
     // Get wallet address for error reporting
     const walletAddress = getWalletAddressFromPrivateKey(serverPrivateKey);
     
@@ -424,9 +396,19 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
 router.post('/verify', async (req: Request, res: Response) => {
   try {
     const { signature, bypassSignature: bypassFlag } = req.body;
-    const bypassSignature = typeof bypassFlag === 'string' 
-      ? bypassFlag === 'true' 
+    const requestedBypass = typeof bypassFlag === 'string'
+      ? bypassFlag === 'true'
       : Boolean(bypassFlag);
+    if (requestedBypass && !BYPASS_SIGNATURE_ALLOWED) {
+      logger.warn('bypassSignature requested but disabled by environment', {
+        path: req.path,
+        method: req.method,
+      });
+      return res.status(403).json({
+        error: 'bypassSignature is not allowed in this environment. Set ALLOW_BYPASS_SIGNATURE=true to enable for dev/demo.',
+      });
+    }
+    const bypassSignature = requestedBypass;
     
     if (!signature || !signature.message || !signature.signature) {
       logger.warn('Missing signature fields in verify request', {
@@ -535,39 +517,6 @@ router.get('/chats', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Failed to get chats', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      path: req.path,
-      method: req.method,
-      query: req.query,
-    });
-    res.status(500).json({ 
-      error: `Internal server error: ${error instanceof Error ? error.message : 'Unknown error'}` 
-    });
-  }
-});
-
-/**
- * GET /api/device/whistleblow
- * Get all whistleblow messages
- */
-router.get('/whistleblow', async (req: Request, res: Response) => {
-  try {
-    const messages = chatStorage.getWhistleblowMessages();
-    
-    logger.debug('Retrieved whistleblow messages', {
-      count: messages.length,
-      path: req.path,
-      query: req.query,
-    });
-    
-    res.status(200).json({
-      success: true,
-      count: messages.length,
-      data: messages,
-    });
-  } catch (error) {
-    logger.error('Failed to get whistleblow messages', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       path: req.path,

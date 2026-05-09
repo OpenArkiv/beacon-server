@@ -1,6 +1,90 @@
 import { ethers } from 'ethers';
-import crypto from 'crypto';
+import crypto, { createPublicKey, verify, KeyObject } from 'crypto';
 import { logger } from '../index.js';
+
+/**
+ * SubjectPublicKeyInfo DER prefix for an Ed25519 public key.
+ * Format: AlgorithmIdentifier (id-Ed25519 = 1.3.101.112) + BIT STRING (32-byte key).
+ * Concatenating this prefix with a 32-byte raw key yields a valid SPKI DER encoding
+ * that Node's crypto module accepts via createPublicKey({ format: 'der', type: 'spki' }).
+ */
+const ED25519_SPKI_PREFIX = Buffer.from([
+  0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65,
+  0x70, 0x03, 0x21, 0x00,
+]);
+
+function ed25519KeyFromRaw(raw: Buffer): KeyObject {
+  if (raw.length !== 32) {
+    throw new Error(`Ed25519 public key must be 32 bytes, got ${raw.length}`);
+  }
+  return createPublicKey({
+    key: Buffer.concat([ED25519_SPKI_PREFIX, raw]),
+    format: 'der',
+    type: 'spki',
+  });
+}
+
+function fromHex(value: string, label: string): Buffer {
+  const stripped = value.startsWith('0x') ? value.slice(2) : value;
+  if (!/^[0-9a-fA-F]*$/.test(stripped) || stripped.length % 2 !== 0) {
+    throw new Error(`Invalid hex for ${label}`);
+  }
+  return Buffer.from(stripped, 'hex');
+}
+
+/**
+ * Verify an Ed25519 signature over a message and return the canonical
+ * device identifier (the lowercased hex of the 32-byte public key, no 0x).
+ */
+export function verifyEd25519Signature(
+  message: string,
+  signature: string,
+  publicKey: string
+): string {
+  const pubkeyBuf = fromHex(publicKey, 'publicKey');
+  if (pubkeyBuf.length !== 32) {
+    throw new Error(`Invalid Ed25519 public key length: expected 32 bytes, got ${pubkeyBuf.length}`);
+  }
+  const sigBuf = fromHex(signature, 'signature');
+  if (sigBuf.length !== 64) {
+    throw new Error(`Invalid Ed25519 signature length: expected 64 bytes, got ${sigBuf.length}`);
+  }
+
+  const messageBuf = Buffer.from(message, 'utf8');
+  const keyObject = ed25519KeyFromRaw(pubkeyBuf);
+  const ok = verify(null, messageBuf, keyObject, sigBuf);
+  if (!ok) {
+    throw new Error('Ed25519 signature verification failed');
+  }
+
+  return pubkeyBuf.toString('hex').toLowerCase();
+}
+
+/**
+ * Derive a deterministic Arkiv-paying wallet private key from any device
+ * identifier (EVM address or Ed25519 pubkey hex) plus the server salt.
+ * Same scheme as generateServerWalletFromAddress; identifier is normalized
+ * to lowercase before PBKDF2.
+ */
+export function generateServerWalletFromIdentifier(
+  identifier: string,
+  serverSalt: string
+): string {
+  const normalized = identifier.toLowerCase();
+  const derivedKey = crypto.pbkdf2Sync(normalized, serverSalt, 100000, 32, 'sha256');
+  const privateKey = '0x' + derivedKey.toString('hex');
+
+  // Sanity-check: the derived key must be a valid secp256k1 private key.
+  // ethers throws on out-of-range or zero keys; we surface a clear error.
+  try {
+    new ethers.Wallet(privateKey);
+  } catch (error) {
+    throw new Error(
+      `Failed to derive valid wallet from identifier: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+  return privateKey;
+}
 
 /**
  * Verify signature and extract wallet address
@@ -92,57 +176,14 @@ export function verifySignatureAndGetAddress(
 }
 
 /**
- * Generate a deterministic private key from device address and server salt
- * Uses PBKDF2 to derive a key from the address + salt
+ * Generate a deterministic private key from device address and server salt.
+ * Thin wrapper around generateServerWalletFromIdentifier kept for backward
+ * compatibility with callers that pass an EVM address.
  */
 export function generateServerWalletFromAddress(
   deviceAddress: string,
   serverSalt: string
 ): string {
-  logger.debug('Generating server wallet from device address', {
-    deviceAddress,
-    serverSaltLength: serverSalt.length,
-    serverSaltSet: !!serverSalt,
-  });
-
-  // Normalize address to lowercase for consistency
-  const normalizedAddress = deviceAddress.toLowerCase();
-  
-  // Use PBKDF2 to derive a deterministic private key
-  const derivedKey = crypto.pbkdf2Sync(
-    normalizedAddress,
-    serverSalt,
-    100000, // iterations
-    32, // key length (32 bytes = 256 bits for private key)
-    'sha256'
-  );
-  
-  // Convert to hex and ensure it's a valid private key format
-  const privateKey = '0x' + derivedKey.toString('hex');
-  
-  logger.debug('Derived private key', {
-    privateKeyLength: privateKey.length,
-    privateKeyPreview: privateKey.substring(0, 10) + '...',
-  });
-  
-  // Validate the private key
-  try {
-    const wallet = new ethers.Wallet(privateKey);
-    logger.debug('Wallet validation successful', {
-      walletAddress: wallet.address,
-      deviceAddress,
-      addressesMatch: wallet.address.toLowerCase() === normalizedAddress,
-    });
-  } catch (error) {
-    logger.error('Failed to validate generated private key', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      deviceAddress,
-      privateKeyLength: privateKey.length,
-    });
-    throw new Error(`Failed to generate valid wallet from address: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-  
-  return privateKey;
+  return generateServerWalletFromIdentifier(deviceAddress, serverSalt);
 }
 

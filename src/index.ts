@@ -6,6 +6,7 @@ import fs from 'fs';
 import multer from 'multer';
 import morgan from 'morgan';
 import winston from 'winston';
+import rateLimit from 'express-rate-limit';
 import deviceRoutes from './routes/device.js';
 import { upload } from './middleware/upload.js';
 
@@ -66,6 +67,21 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString() 
   });
 });
+
+// Per-IP rate limit on the device API. Tunable via env so noisy demos and
+// quiet production deploys can use the same image. Defaults: 30 req / minute.
+// Set RATE_LIMIT_DISABLED=true to skip (only useful for load tests).
+if (process.env.RATE_LIMIT_DISABLED !== 'true') {
+  const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS) || 60_000;
+  const max = Number(process.env.RATE_LIMIT_MAX) || 30;
+  app.use('/api/device', rateLimit({
+    windowMs,
+    max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests — slow down.' },
+  }));
+}
 
 // API routes
 app.use('/api/device', deviceRoutes);

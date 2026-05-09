@@ -30,6 +30,5 @@ export interface FileUploadRequest {
   entity: DeviceEntity;
   signature: SignaturePayload;
   file?: Express.Multer.File;
-  whistleblow?: boolean;
 }
 

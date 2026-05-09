@@ -2,6 +2,8 @@
 node_modules/
 package-lock.json
 yarn.lock
+bun.lock
+bun.lockb
 
 # Build output
 dist/
@@ -28,6 +30,5 @@ temp/
 .DS_Store
 Thumbs.db
 
-
- 
-xx-network/xxstate
+# SQLite chat storage (regenerated at runtime)
+data/
