@@ -38,6 +38,13 @@ const logger = winston.createLogger({
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// We sit behind Caddy (and Cloudflare in prod). Trust the proxy chain so
+// req.ip / rate-limit keys reflect the real client, not the proxy hop.
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS) || 2);
+
+// Don't advertise the framework.
+app.disable('x-powered-by');
+
 // Ensure temp directory exists
 const tempDir = path.join(process.cwd(), 'temp');
 if (!fs.existsSync(tempDir)) {
@@ -79,6 +86,13 @@ if (process.env.RATE_LIMIT_DISABLED !== 'true') {
     max,
     standardHeaders: true,
     legacyHeaders: false,
+    // Behind Cloudflare → Caddy → Express. Prefer CF's real-client header
+    // when present, fall back to req.ip (which respects trust proxy).
+    keyGenerator: (req) => {
+      const cf = req.headers['cf-connecting-ip'];
+      if (typeof cf === 'string' && cf.length > 0) return cf;
+      return req.ip ?? 'unknown';
+    },
     message: { error: 'Too many requests — slow down.' },
   }));
 }
