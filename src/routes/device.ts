@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, type Router } from 'express';
 import {
   verifySignatureAndGetAddress,
   verifyEd25519Signature,
@@ -13,7 +13,7 @@ import type { DeviceEntity, FileUploadRequest, UploadResponse } from '../types/i
 import { logger } from '../index.js';
 import { ethers } from 'ethers';
 
-const router = express.Router();
+const router: Router = express.Router();
 
 // Signature bypass is a dev/demo escape hatch. It must be explicitly enabled
 // via ALLOW_BYPASS_SIGNATURE=true in the environment, otherwise any incoming
