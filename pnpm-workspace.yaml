@@ -1,0 +1,5 @@
+# pnpm v10+ does not run dependency install scripts unless allowlisted.
+# better-sqlite3 must compile (or fetch) its native binding; esbuild is used by tsx.
+onlyBuiltDependencies:
+  - better-sqlite3
+  - esbuild
