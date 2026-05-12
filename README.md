@@ -6,7 +6,7 @@ Express server for beacon device data upload to Arkiv network with IPFS file sto
 
 - **Device Authentication**: Ed25519 signature verification (preferred), EVM personal_sign supported for legacy clients
 - **Deterministic Wallet Generation**: PBKDF2 derives a per-device Arkiv-paying wallet from the device's pubkey hex (or EVM address) + a server-side salt
-- **Arkiv Integration**: Upload device entities to the Arkiv network (Mendoza testnet by default)
+- **Arkiv Integration**: Upload device entities to the Arkiv network (Braga testnet by default)
 - **IPFS File Storage**: Upload files to IPFS via Pinata and store the hash in the Arkiv entity payload
 - **Rate Limited**: 30 req/min per IP on `/api/device/*` (env-tunable)
 - **TypeScript**: Fully typed Express server
@@ -15,7 +15,7 @@ Express server for beacon device data upload to Arkiv network with IPFS file sto
 
 - Node.js 18+ or Bun
 - Pinata API credentials (for IPFS uploads)
-- Arkiv testnet access (Mendoza)
+- Arkiv testnet access (Braga)
 
 ## Installation
 
@@ -33,8 +33,8 @@ cp .env.example .env
 ```env
 PORT=3000
 SERVER_SALT=your-server-salt-here-change-in-production
-ARKIV_RPC_URL=https://mendoza.hoodi.arkiv.network/rpc
-ARKIV_WS_URL=wss://mendoza.hoodi.arkiv.network/rpc/ws
+ARKIV_RPC_URL=https://braga.hoodi.arkiv.network/rpc
+ARKIV_WS_URL=wss://braga.hoodi.arkiv.network/rpc/ws
 PINATA_API_KEY=your-pinata-api-key
 PINATA_SECRET_KEY=your-pinata-secret-key
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173
@@ -119,7 +119,7 @@ Upload device entity data to Arkiv network with optional file upload.
   "error": "Insufficient funds: The server wallet does not have enough funds to execute this transaction.",
   "walletAddress": "0x413264d93a99CFD5B2159B2DA1109Bad02301AE6",
   "message": "Please fund the wallet address: 0x413264d93a99CFD5B2159B2DA1109Bad02301AE6",
-  "faucetUrl": "https://mendoza.hoodi.arkiv.network/faucet/"
+  "faucetUrl": "https://braga.hoodi.arkiv.network/faucet/"
 }
 ```
 
@@ -199,7 +199,7 @@ src/
 | `PINATA_SECRET_KEY` | Pinata secret key | Yes (for file uploads) |
 | `PORT` | Server port | No (default: 3000) |
 | `NODE_ENV` | Standard Node convention | No (`development`) |
-| `ARKIV_RPC_URL` | Arkiv RPC endpoint | No (default: Mendoza testnet) |
+| `ARKIV_RPC_URL` | Arkiv RPC endpoint | No (default: Braga testnet) |
 | `CORS_ORIGINS` | Allowed CORS origins (comma-separated) | No (default: `*`) |
 | `LOG_LEVEL` | Winston log level | No (`info`) |
 | `RATE_LIMIT_WINDOW_MS` | Rate-limit window | No (`60000`) |
@@ -284,7 +284,7 @@ The `$()` escapes the `//` from xcconfig comment parsing — required.
 
 ### 6. Fund the per-device wallets
 
-Each device that uploads triggers PBKDF2 → a unique Arkiv-paying wallet. The 402 error response includes the wallet address and faucet URL; fund it once at https://mendoza.hoodi.arkiv.network/faucet/ and that device can publish from then on.
+Each device that uploads triggers PBKDF2 → a unique Arkiv-paying wallet. The 402 error response includes the wallet address and faucet URL; fund it once at https://braga.hoodi.arkiv.network/faucet/ and that device can publish from then on.
 
 ### Operational notes
 

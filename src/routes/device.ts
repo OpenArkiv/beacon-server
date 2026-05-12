@@ -357,8 +357,8 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
           error: 'Insufficient funds: The server wallet does not have enough funds to execute this transaction.',
           walletAddress: walletAddress,
           message: `Please fund the wallet address: ${walletAddress}`,
-          faucetUrl: process.env.ARKIV_RPC_URL?.includes('mendoza') 
-            ? 'https://mendoza.hoodi.arkiv.network/faucet/' 
+          faucetUrl: process.env.ARKIV_RPC_URL?.includes('braga')
+            ? 'https://braga.hoodi.arkiv.network/faucet/'
             : undefined,
         });
       }

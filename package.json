@@ -20,7 +20,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@arkiv-network/sdk": "^0.4.4",
+    "@arkiv-network/sdk": "^0.6.5",
     "axios": "^1.6.7",
     "better-sqlite3": "^12.5.0",
     "cors": "^2.8.5",

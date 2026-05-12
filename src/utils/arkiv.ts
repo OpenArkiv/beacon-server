@@ -1,5 +1,5 @@
 import { createWalletClient, createPublicClient, http } from '@arkiv-network/sdk';
-import { mendoza } from '@arkiv-network/sdk/chains';
+import { braga } from '@arkiv-network/sdk/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { stringToPayload } from '@arkiv-network/sdk/utils';
 import { eq } from '@arkiv-network/sdk/query';
@@ -27,8 +27,8 @@ export function createArkivWalletClient(privateKey: string): WalletClient {
   const account = privateKeyToAccount(privateKey as `0x${string}`);
 
   return createWalletClient({
-    chain: mendoza,
-    transport: http(process.env.ARKIV_RPC_URL || 'https://mendoza.hoodi.arkiv.network/rpc'),
+    chain: braga,
+    transport: http(process.env.ARKIV_RPC_URL || 'https://braga.hoodi.arkiv.network/rpc'),
     account,
   });
 }
@@ -46,8 +46,8 @@ export function getWalletAddressFromPrivateKey(privateKey: string): string {
  */
 export function createArkivPublicClient(): PublicClient {
   return createPublicClient({
-    chain: mendoza,
-    transport: http(process.env.ARKIV_RPC_URL || 'https://mendoza.hoodi.arkiv.network/rpc'),
+    chain: braga,
+    transport: http(process.env.ARKIV_RPC_URL || 'https://braga.hoodi.arkiv.network/rpc'),
   });
 }
 

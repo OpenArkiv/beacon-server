@@ -5,14 +5,14 @@ const PRIVATE_KEY = '0xef638369d21bd2c8dff385e6e59e35eaf4e5f5e16e6421706d4cc670f
 
 // 1) Connect your account to Arkiv
 const walletClient = arkiv.createWalletClient({
-  chain: arkiv.mendoza,
-  transport: arkiv.http('https://mendoza.hoodi.arkiv.network/rpc'),
+  chain: arkiv.braga,
+  transport: arkiv.http('https://braga.hoodi.arkiv.network/rpc'),
   account: privateKeyToAccount(PRIVATE_KEY),
 });
 
 const publicClient = arkiv.createPublicClient({
-  chain: arkiv.mendoza,
-  transport: http('https://mendoza.hoodi.arkiv.network/rpc'),
+  chain: arkiv.braga,
+  transport: http('https://braga.hoodi.arkiv.network/rpc'),
 });
 
 // 2) Write one small record on-chain
@@ -223,12 +223,12 @@ Setup & Installation
 
 If you want to run this outside the browser (CI, local ts-node, a service), set up the SDK in your own project. This section shows package.json, .env and a reference script so you can run the same Voting Board flow from your terminal.
 
-Arkiv Testnet "Mendoza" Resources
-💧 Faucet: https://mendoza.hoodi.arkiv.network/faucet/
-🔍 Explorer: https://explorer.mendoza.hoodi.arkiv.network
+Arkiv Testnet "Braga" Resources
+💧 Faucet: https://braga.hoodi.arkiv.network/faucet/
+🔍 Explorer: https://explorer.braga.hoodi.arkiv.network
 
-🌐 RPC: https://mendoza.hoodi.arkiv.network/rpc
-🌉 Bridge: https://mendoza.hoodi.arkiv.network/bridgette/
+🌐 RPC: https://braga.hoodi.arkiv.network/rpc
+🌉 Bridge: https://braga.hoodi.arkiv.network/bridgette/
 
 Installation
 
@@ -279,5 +279,5 @@ Environment Configuration
 
 1# .env
 2PRIVATE_KEY=0x...                      # use the (TEST) private key generated above
-3RPC_URL=https://your.rpc.endpoint/rpc    # e.g. https://mendoza.hoodi.arkiv.network/rpc
-4WS_URL=wss://your.rpc.endpoint/rpc/ws    # e.g. wss://mendoza.hoodi.arkiv.network/rpc/ws
+3RPC_URL=https://your.rpc.endpoint/rpc    # e.g. https://braga.hoodi.arkiv.network/rpc
+4WS_URL=wss://your.rpc.endpoint/rpc/ws    # e.g. wss://braga.hoodi.arkiv.network/rpc/ws

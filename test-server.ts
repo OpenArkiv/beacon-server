@@ -471,7 +471,7 @@ async function runTests() {
       console.log(`${index + 1}. ${address}`);
     });
     console.log('');
-    console.log('Faucet URL: https://mendoza.hoodi.arkiv.network/faucet/');
+    console.log('Faucet URL: https://braga.hoodi.arkiv.network/faucet/');
     console.log('');
     console.log('Copy these addresses and fund them, then rerun the tests.');
     console.log('='.repeat(50));

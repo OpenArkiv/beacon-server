@@ -27,7 +27,7 @@ services:
       SERVER_SALT: ${SERVER_SALT:?set SERVER_SALT in .env}
       PINATA_API_KEY: ${PINATA_API_KEY:?set PINATA_API_KEY in .env}
       PINATA_SECRET_KEY: ${PINATA_SECRET_KEY:?set PINATA_SECRET_KEY in .env}
-      ARKIV_RPC_URL: ${ARKIV_RPC_URL:-https://mendoza.hoodi.arkiv.network/rpc}
+      ARKIV_RPC_URL: ${ARKIV_RPC_URL:-https://braga.hoodi.arkiv.network/rpc}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
