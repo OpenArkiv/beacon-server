@@ -5,6 +5,7 @@ import {
   generateServerWalletFromIdentifier,
 } from '../utils/signature.js';
 import { createArkivWalletClient, uploadEntityToArkiv, getWalletAddressFromPrivateKey } from '../utils/arkiv.js';
+import { fundWallet, isFunderEnabled } from '../utils/funder.js';
 import { uploadToPinata, cleanupTempFile } from '../utils/ipfs.js';
 import { chatStorage } from '../utils/storage.js';
 import { upload } from '../middleware/upload.js';
@@ -27,6 +28,19 @@ const BYPASS_SIGNATURE_ALLOWED = process.env.ALLOW_BYPASS_SIGNATURE === 'true';
 const MOCK_DEVICE_PRIVATE_KEY =
   process.env.MOCK_DEVICE_PRIVATE_KEY ??
   '0xa8d3aacecac70fe98fbc8ca7f76fb703c30c44eae2fd0d57c06123a7e69e0621';
+
+/**
+ * Detect the various "wallet has no gas" error strings Arkiv/viem can surface
+ * (e.g. "Transaction failed: insufficient funds for transfer"). Used to decide
+ * whether to top the device wallet up from the funder and retry.
+ */
+function isInsufficientFundsError(message: string): boolean {
+  return (
+    message.includes('insufficient funds') ||
+    message.includes('exceeds the balance') ||
+    message.includes('balance of the account')
+  );
+}
 
 /**
  * POST /api/device/upload
@@ -304,8 +318,20 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
     // Get wallet address for error reporting
     const walletAddress = getWalletAddressFromPrivateKey(serverPrivateKey);
     
-    // Create Arkiv wallet client and upload entity
+    // Create Arkiv wallet client and upload entity.
+    //
+    // Each device pays from its own derived wallet, which starts empty. If the
+    // upload fails with "insufficient funds", we top that wallet up from the
+    // shared funder wallet and retry once before giving up. Set
+    // FUNDER_PRIVATE_KEY to enable auto-funding; without it we fall back to the
+    // old behaviour of returning 402 and asking the caller to fund manually.
     let uploadResult: UploadResponse;
+
+    const doUpload = async () => {
+      const walletClient = createArkivWalletClient(serverPrivateKey!);
+      return uploadEntityToArkiv(walletClient, deviceEntity, ipfsHash);
+    };
+
     try {
       logger.info('Uploading entity to Arkiv', {
         nodeId: deviceEntity.nodeId,
@@ -314,9 +340,38 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
         hasIpfsHash: !!ipfsHash,
         path: req.path,
       });
-      const walletClient = createArkivWalletClient(serverPrivateKey);
-      const result = await uploadEntityToArkiv(walletClient, deviceEntity, ipfsHash);
-      
+
+      let result;
+      try {
+        result = await doUpload();
+      } catch (firstError) {
+        const firstMessage =
+          firstError instanceof Error ? firstError.message : String(firstError);
+
+        // Only attempt auto-funding for insufficient-funds failures with a
+        // funder configured; rethrow anything else to the outer handler.
+        if (!isInsufficientFundsError(firstMessage) || !isFunderEnabled()) {
+          throw firstError;
+        }
+
+        logger.warn('Insufficient funds — topping up device wallet from funder', {
+          walletAddress,
+          nodeId: deviceEntity.nodeId,
+          path: req.path,
+        });
+
+        // Fund the device wallet, then retry the upload once. If funding
+        // itself fails (e.g. funder is empty), surface that as the error.
+        const fundingTxHash = await fundWallet(walletAddress);
+        logger.info('Retrying Arkiv upload after funding', {
+          walletAddress,
+          fundingTxHash,
+          nodeId: deviceEntity.nodeId,
+          path: req.path,
+        });
+        result = await doUpload();
+      }
+
       logger.info('Successfully uploaded entity to Arkiv', {
         nodeId: deviceEntity.nodeId,
         entityKey: result.entityKey,
@@ -324,7 +379,7 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
         walletAddress,
         path: req.path,
       });
-      
+
       uploadResult = {
         entityKey: result.entityKey,
         txHash: result.txHash,
@@ -332,7 +387,7 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       logger.error('Arkiv upload failed', {
         error: errorMessage,
         stack: error instanceof Error ? error.stack : undefined,
@@ -340,20 +395,21 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
         devicePub: deviceEntity.devicePub,
         walletAddress,
         ipfsHash,
+        funderEnabled: isFunderEnabled(),
         path: req.path,
         method: req.method,
       });
-      
-      // Check if it's an insufficient funds error
-      if (errorMessage.includes('insufficient funds') || 
-          errorMessage.includes('exceeds the balance') ||
-          errorMessage.includes('balance of the account')) {
+
+      // Still insufficient funds after a funding attempt (or no funder
+      // configured at all) — ask the caller to fund the wallet manually.
+      if (isInsufficientFundsError(errorMessage)) {
         logger.warn('Insufficient funds for Arkiv transaction', {
           walletAddress,
+          funderEnabled: isFunderEnabled(),
           nodeId: deviceEntity.nodeId,
           path: req.path,
         });
-        return res.status(402).json({ 
+        return res.status(402).json({
           error: 'Insufficient funds: The server wallet does not have enough funds to execute this transaction.',
           walletAddress: walletAddress,
           message: `Please fund the wallet address: ${walletAddress}`,
@@ -362,8 +418,8 @@ router.post('/upload', upload.single('file') as any, async (req: Request, res: R
             : undefined,
         });
       }
-      
-      return res.status(500).json({ 
+
+      return res.status(500).json({
         error: `Arkiv upload failed: ${errorMessage}`,
         walletAddress: walletAddress, // Include wallet address for debugging
       });
